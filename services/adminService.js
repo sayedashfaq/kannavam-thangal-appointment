@@ -113,9 +113,16 @@ const formatStatus = async () => {
     ? `On Leave 🚫${status.leaveReason ? ` (${status.leaveReason})` : ''}`
     : 'Available ✅';
 
-  return `*Today's Status*
+  const windowLine = status.windowOpen
+    ? 'Open for this consultation day ✅'
+    : status.opensOn
+      ? `Opens ${status.opensOn}`
+      : 'Closed';
+
+  return `*Booking Status*
 
 *Booking:* ${status.bookingOpen ? 'Open ✅' : 'Closed ❌'}
+*Token Window:* ${windowLine}
 *Leave Status:* ${leaveLine}
 *Consultation Day:* ${status.consultationDay}
 *Location:* ${status.location}
@@ -124,16 +131,25 @@ const formatStatus = async () => {
 };
 
 const formatTodayBookings = async () => {
+  const status = await bookingService.getTodayStatus();
   const bookings = await bookingService.getTodayBookings();
 
-  if (bookings.length === 0) return messages.NO_BOOKINGS_TODAY;
+  if (!status.windowOpen) {
+    return status.opensOn
+      ? `No active booking window right now.\n\nNext tokens open on *${status.opensOn}* for *${status.consultationDay}*.`
+      : messages.NO_BOOKINGS_TODAY;
+  }
+
+  if (bookings.length === 0) {
+    return `No bookings yet for *${status.consultationDay}*.`;
+  }
 
   const lines = bookings.map(
     (booking) =>
       `${booking.tokenNumber} · ${booking.reportingTime}\n${booking.visitorName} — ${booking.place}\n${booking.phone}`
   );
 
-  const header = `*Today's Bookings (${bookings.length})*\n${bookings[0].consultationLocation}`;
+  const header = `*Bookings for ${status.consultationDay} (${bookings.length})*\n${bookings[0].consultationLocation}`;
   return `${header}\n\n${lines.join('\n\n')}`;
 };
 
@@ -194,7 +210,13 @@ const updateLimitReply = async (argument) => {
 
   if (!Number.isInteger(limit) || limit < 1) return messages.INVALID_LIMIT;
 
-  const schedule = await scheduleService.updateTodayTokenLimit(limit);
+  const status = await bookingService.getTodayStatus();
+  if (!status.schedule) return messages.NO_SCHEDULE_TODAY;
+
+  const schedule = await scheduleService.updateTokenLimitForDay(
+    status.schedule.day,
+    limit
+  );
   if (!schedule) return messages.NO_SCHEDULE_TODAY;
 
   return messages.LIMIT_UPDATED(schedule);

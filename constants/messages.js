@@ -25,13 +25,16 @@ module.exports = {
       : `${CONSULTANT} is unavailable today.\n\nPlease contact us for the next consultation day.`,
 
   NOT_CONSULTATION_DAY:
-    'Appointments are issued only on Tuesday, Wednesday and Saturday.\n\nPlease contact us on the next consultation day.',
+    'Appointments are issued for Tuesday, Wednesday and Saturday consultations.\n\nPlease contact us closer to the next consultation day.',
+
+  BOOKING_WINDOW_CLOSED: ({ consultationDay, displayDate, opensOn }) =>
+    `Booking for *${consultationDay}* (${displayDate}) is not open yet.\n\nTokens open from *${opensOn}* (the day before).\n\nPlease try again then.`,
 
   TOKEN_LIMIT_REACHED:
-    "Today's appointments are full.\n\nPlease contact us for the next consultation day.",
+    'Appointments for this consultation day are full.\n\nPlease contact us for the next consultation day.',
 
   DUPLICATE_BOOKING: (booking) =>
-    `You already have an appointment for today.\n\n*Token Number:* ${booking.tokenNumber}\n*Reporting Time:* ${booking.reportingTime}\n*Location:* ${booking.consultationLocation}`,
+    `You already have an appointment for *${booking.consultationDay}*${booking.displayDate ? ` (${booking.displayDate})` : ''}.\n\n*Token Number:* ${booking.tokenNumber}\n*Reporting Time:* ${booking.reportingTime}\n*Location:* ${booking.consultationLocation}`,
 
   ALREADY_BOOKED_HINT:
     'Your appointment is already confirmed. Send *Hi* if you would like to start again.',
@@ -40,10 +43,10 @@ module.exports = {
     'Sorry, something went wrong while processing your request. Please try again in a few minutes.',
 
   BOOKING_CONFIRMATION: (booking) =>
-    `Assalamu Alaikum ورحمة الله وبركاته\n\nYour appointment with *${CONSULTANT}* has been confirmed.\n\n*Token Number:*\n${booking.tokenNumber}\n\n*Consultation Day:*\n${booking.consultationDay}\n\n*Location:*\n${booking.consultationLocation}\n\n*Reporting Time:*\n${booking.reportingTime}\n\nPlease arrive before your reporting time.\n\nJazakAllahu Khairan.`,
+    `Assalamu Alaikum ورحمة الله وبركاته\n\nYour appointment with *${CONSULTANT}* has been confirmed.\n\n*Token Number:*\n${booking.tokenNumber}\n\n*Consultation Day:*\n${booking.consultationDay}${booking.displayDate ? `\n(${booking.displayDate})` : ''}\n\n*Location:*\n${booking.consultationLocation}\n\n*Reporting Time:*\n${booking.reportingTime}\n\nPlease arrive before your reporting time.\n\nJazakAllahu Khairan.`,
 
   ADMIN_NEW_BOOKING: (booking) =>
-    `📌 *New Appointment*\n\n*Token:* ${booking.tokenNumber}\n*Visitor Name:* ${booking.visitorName}\n*Place:* ${booking.place}\n*Phone:* ${booking.phone}\n*Consultation Day:* ${booking.consultationDay}\n*Location:* ${booking.consultationLocation}\n*Reporting Time:* ${booking.reportingTime}`,
+    `📌 *New Appointment*\n\n*Token:* ${booking.tokenNumber}\n*Visitor Name:* ${booking.visitorName}\n*Place:* ${booking.place}\n*Phone:* ${booking.phone}\n*Consultation Day:* ${booking.consultationDay}${booking.displayDate ? ` (${booking.displayDate})` : ''}\n*Location:* ${booking.consultationLocation}\n*Reporting Time:* ${booking.reportingTime}`,
 
   ADMIN_MENU: `📋 *${CONSULTANT} Appointment Manager*
 

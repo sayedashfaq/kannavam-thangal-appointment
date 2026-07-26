@@ -31,8 +31,6 @@ const getZonedParts = (date = new Date()) => {
 
 const getTodayDayName = (date = new Date()) => getZonedParts(date).weekday;
 
-// Stable key for "which consultation day does this booking belong to".
-// Stored as UTC midnight of the local calendar date so queries are exact.
 const getBookingDate = (date = new Date()) => {
   const { year, month, day } = getZonedParts(date);
   return new Date(Date.UTC(year, month - 1, day));
@@ -41,6 +39,44 @@ const getBookingDate = (date = new Date()) => {
 const getDateKey = (date = new Date()) => {
   const { year, month, day } = getZonedParts(date);
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+};
+
+const addLocalDays = (date, days) => {
+  const { year, month, day } = getZonedParts(date);
+  return new Date(Date.UTC(year, month - 1, day + days, 12, 0, 0));
+};
+
+const formatDisplayDate = (date = new Date()) => {
+  const { weekday, day, month, year } = getZonedParts(date);
+  const monthName = new Date(Date.UTC(year, month - 1, day)).toLocaleString('en-US', {
+    month: 'short',
+    timeZone: 'UTC',
+  });
+  return `${weekday}, ${day} ${monthName} ${year}`;
+};
+
+const findNextConsultationDate = async (fromDate, getScheduleForDate) => {
+  for (let offset = 0; offset < 14; offset += 1) {
+    const candidate = addLocalDays(fromDate, offset);
+    // eslint-disable-next-line no-await-in-loop
+    const schedule = await getScheduleForDate(candidate);
+    if (schedule) {
+      return {
+        date: candidate,
+        dayName: getTodayDayName(candidate),
+        schedule,
+      };
+    }
+  }
+  return null;
+};
+
+// Booking for a consultation day opens at local midnight on the day before.
+const isWithinAdvanceBookingWindow = (now, consultationDate) => {
+  const windowStart = getBookingDate(addLocalDays(consultationDate, -1)).getTime();
+  const windowEnd = getBookingDate(consultationDate).getTime();
+  const today = getBookingDate(now).getTime();
+  return today >= windowStart && today <= windowEnd;
 };
 
 const parseTimeToMinutes = (timeStr) => {
@@ -96,6 +132,10 @@ module.exports = {
   getTodayDayName,
   getBookingDate,
   getDateKey,
+  addLocalDays,
+  formatDisplayDate,
+  findNextConsultationDate,
+  isWithinAdvanceBookingWindow,
   parseTimeToMinutes,
   isValidTimeString,
   formatMinutesToTime,

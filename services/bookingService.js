@@ -6,6 +6,10 @@ const {
   getDateKey,
   getTodayDayName,
   calculateReportingTime,
+  findNextConsultationDate,
+  isWithinAdvanceBookingWindow,
+  formatDisplayDate,
+  addLocalDays,
 } = require('../helpers/timeHelper');
 const { toLocalNumber } = require('../helpers/phoneHelper');
 const env = require('../config/env');
@@ -18,6 +22,7 @@ const BookingError = {
   BOOKING_CLOSED: 'BOOKING_CLOSED',
   CONSULTANT_ON_LEAVE: 'CONSULTANT_ON_LEAVE',
   NOT_CONSULTATION_DAY: 'NOT_CONSULTATION_DAY',
+  BOOKING_WINDOW_CLOSED: 'BOOKING_WINDOW_CLOSED',
   TOKEN_LIMIT_REACHED: 'TOKEN_LIMIT_REACHED',
   DUPLICATE_BOOKING: 'DUPLICATE_BOOKING',
   BOOKING_NOT_FOUND: 'BOOKING_NOT_FOUND',
@@ -26,23 +31,68 @@ const BookingError = {
 
 const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
 
-const getTodayBookings = async (date = new Date()) =>
+/**
+ * Resolves which consultation day tokens are being issued for.
+ * Booking opens from the day before that consultation day.
+ */
+const resolveActiveConsultation = async (now = new Date()) => {
+  const next = await findNextConsultationDate(now, async (candidate) =>
+    scheduleService.getTodaySchedule(candidate)
+  );
+
+  if (!next) {
+    return {
+      available: false,
+      windowOpen: false,
+      date: null,
+      dayName: null,
+      schedule: null,
+      displayDate: null,
+      opensOn: null,
+    };
+  }
+
+  const windowOpen = isWithinAdvanceBookingWindow(now, next.date);
+  const opensOn = formatDisplayDate(addLocalDays(next.date, -1));
+
+  return {
+    available: true,
+    windowOpen,
+    date: next.date,
+    dayName: next.dayName,
+    schedule: next.schedule,
+    displayDate: formatDisplayDate(next.date),
+    opensOn,
+  };
+};
+
+const getBookingsForDate = async (date) =>
   Booking.find({
     bookingDate: getBookingDate(date),
     status: BOOKING_STATUS.BOOKED,
   }).sort({ tokenSequence: 1 });
 
-const getAllTodayBookings = async (date = new Date()) =>
-  Booking.find({ bookingDate: getBookingDate(date) }).sort({ tokenSequence: 1 });
+const getTodayBookings = async (date = new Date()) => {
+  const active = await resolveActiveConsultation(date);
+  if (!active.windowOpen) return [];
+  return getBookingsForDate(active.date);
+};
 
-// Only active bookings count towards the limit, so a cancellation frees a slot.
-const getActiveBookingCount = async (date = new Date()) =>
+const getAllTodayBookings = async (date = new Date()) => {
+  const active = await resolveActiveConsultation(date);
+  if (!active.available) return [];
+  return Booking.find({ bookingDate: getBookingDate(active.date) }).sort({
+    tokenSequence: 1,
+  });
+};
+
+const getActiveBookingCount = async (date) =>
   Booking.countDocuments({
     bookingDate: getBookingDate(date),
     status: BOOKING_STATUS.BOOKED,
   });
 
-const findDuplicateBooking = async (phone, whatsappNumber = '', date = new Date()) => {
+const findDuplicateBooking = async (phone, whatsappNumber = '', date) => {
   const localPhone = toLocalNumber(phone);
   const localWhatsapp = toLocalNumber(whatsappNumber);
   const candidates = [localPhone, localWhatsapp].filter(Boolean);
@@ -54,8 +104,6 @@ const findDuplicateBooking = async (phone, whatsappNumber = '', date = new Date(
   });
 };
 
-// Looks at today first, then falls back to the most recent booking so the
-// admin can still look up a visitor on a non-consultation day.
 const findBookingByPhone = async (phone, date = new Date()) => {
   const localPhone = toLocalNumber(phone);
   if (!localPhone) return null;
@@ -64,57 +112,76 @@ const findBookingByPhone = async (phone, date = new Date()) => {
     $or: [{ phone: localPhone }, { whatsappNumber: localPhone }],
   };
 
-  const todayBooking = await Booking.findOne({
-    ...query,
-    bookingDate: getBookingDate(date),
-  });
+  const active = await resolveActiveConsultation(date);
+  if (active.windowOpen) {
+    const current = await Booking.findOne({
+      ...query,
+      bookingDate: getBookingDate(active.date),
+    });
+    if (current) return current;
+  }
 
-  return todayBooking || Booking.findOne(query).sort({ bookingDate: -1, createdAt: -1 });
+  return Booking.findOne(query).sort({ bookingDate: -1, createdAt: -1 });
 };
 
 const findBookingByToken = async (token, date = new Date()) => {
   const normalized = normalizeToken(token);
   if (!normalized) return null;
 
-  return Booking.findOne({
-    tokenNumber: normalized,
-    bookingDate: getBookingDate(date),
-  });
+  const active = await resolveActiveConsultation(date);
+  if (active.available) {
+    const current = await Booking.findOne({
+      tokenNumber: normalized,
+      bookingDate: getBookingDate(active.date),
+    });
+    if (current) return current;
+  }
+
+  return Booking.findOne({ tokenNumber: normalized }).sort({ bookingDate: -1 });
 };
 
 const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' }) => {
   const now = new Date();
+  const active = await resolveActiveConsultation(now);
 
-  const schedule = await scheduleService.getTodaySchedule(now);
-  if (!schedule) {
+  if (!active.available || !active.schedule) {
     throw new Error(BookingError.NOT_CONSULTATION_DAY);
+  }
+  if (!active.windowOpen) {
+    const error = new Error(BookingError.BOOKING_WINDOW_CLOSED);
+    error.meta = {
+      consultationDay: active.dayName,
+      displayDate: active.displayDate,
+      opensOn: active.opensOn,
+    };
+    throw error;
   }
 
   const settings = await settingsService.getSettings();
   if (settings.consultantOnLeave) {
     throw new Error(BookingError.CONSULTANT_ON_LEAVE);
   }
-  if (!settings.bookingOpen || !schedule.bookingOpen) {
+  if (!settings.bookingOpen || !active.schedule.bookingOpen) {
     throw new Error(BookingError.BOOKING_CLOSED);
   }
 
   const localPhone = toLocalNumber(phone);
   const localWhatsapp = toLocalNumber(whatsappNumber);
 
-  const duplicate = await findDuplicateBooking(localPhone, localWhatsapp, now);
+  const duplicate = await findDuplicateBooking(localPhone, localWhatsapp, active.date);
   if (duplicate) {
     throw new Error(BookingError.DUPLICATE_BOOKING);
   }
 
-  const activeCount = await getActiveBookingCount(now);
-  if (activeCount >= schedule.tokenLimit) {
+  const activeCount = await getActiveBookingCount(active.date);
+  if (activeCount >= active.schedule.tokenLimit) {
     throw new Error(BookingError.TOKEN_LIMIT_REACHED);
   }
 
-  const sequence = await counterService.getNextSequence(tokenCounterKey(now));
+  const sequence = await counterService.getNextSequence(tokenCounterKey(active.date));
   const tokenNumber = generateTokenNumber(sequence);
   const reportingTime = calculateReportingTime(
-    schedule,
+    active.schedule,
     sequence,
     env.dynamicReportingTime
   );
@@ -126,18 +193,21 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
     whatsappNumber: localWhatsapp,
     tokenNumber,
     tokenSequence: sequence,
-    bookingDate: getBookingDate(now),
-    consultationDay: getTodayDayName(now),
-    consultationLocation: schedule.location,
+    bookingDate: getBookingDate(active.date),
+    consultationDay: active.dayName,
+    consultationLocation: active.schedule.location,
     reportingTime,
     status: BOOKING_STATUS.BOOKED,
   });
+
+  booking.displayDate = active.displayDate;
 
   logger.info('Booking created', {
     tokenNumber: booking.tokenNumber,
     visitorName: booking.visitorName,
     phone: booking.phone,
     consultationDay: booking.consultationDay,
+    bookingDate: getDateKey(active.date),
   });
 
   return booking;
@@ -162,28 +232,41 @@ const cancelBooking = async (token, date = new Date()) => {
 
 const getTodayStatus = async (date = new Date()) => {
   const settings = await settingsService.getSettings();
-  const schedule = await scheduleService.getTodaySchedule(date);
-  const bookedCount = await getActiveBookingCount(date);
+  const active = await resolveActiveConsultation(date);
+  const bookedCount = active.windowOpen ? await getActiveBookingCount(active.date) : 0;
 
   return {
-    bookingOpen: settings.bookingOpen && Boolean(schedule?.bookingOpen),
+    bookingOpen:
+      settings.bookingOpen &&
+      active.windowOpen &&
+      Boolean(active.schedule?.bookingOpen),
     consultantOnLeave: settings.consultantOnLeave,
     leaveReason: settings.leaveReason,
-    isConsultationDay: Boolean(schedule),
+    isConsultationDay: getTodayDayName(date) === active.dayName,
     dayName: getTodayDayName(date),
-    consultationDay: schedule ? getTodayDayName(date) : 'None (not a consultation day)',
-    location: schedule?.location || 'N/A',
+    consultationDay: active.available
+      ? `${active.dayName} (${active.displayDate})`
+      : 'None scheduled',
+    location: active.schedule?.location || 'N/A',
     bookedCount,
-    tokenLimit: schedule?.tokenLimit || 0,
-    remainingTokens: schedule ? Math.max(0, schedule.tokenLimit - bookedCount) : 0,
+    tokenLimit: active.schedule?.tokenLimit || 0,
+    remainingTokens: active.schedule
+      ? Math.max(0, active.schedule.tokenLimit - bookedCount)
+      : 0,
+    windowOpen: active.windowOpen,
+    opensOn: active.opensOn,
+    targetDate: active.date,
+    schedule: active.schedule,
   };
 };
 
 module.exports = {
   BookingError,
   tokenCounterKey,
+  resolveActiveConsultation,
   getTodayBookings,
   getAllTodayBookings,
+  getBookingsForDate,
   getActiveBookingCount,
   findDuplicateBooking,
   findBookingByPhone,

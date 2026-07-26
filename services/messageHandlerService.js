@@ -181,6 +181,19 @@ const handleBookingFailure = async (from, phone, error) => {
       await reply(from, messages.NOT_CONSULTATION_DAY);
       return;
 
+    case BookingError.BOOKING_WINDOW_CLOSED:
+      await reply(
+        from,
+        messages.BOOKING_WINDOW_CLOSED(
+          error.meta || {
+            consultationDay: 'the next consultation day',
+            displayDate: 'soon',
+            opensOn: 'the day before',
+          }
+        )
+      );
+      return;
+
     case BookingError.TOKEN_LIMIT_REACHED:
       await reply(from, messages.TOKEN_LIMIT_REACHED);
       return;

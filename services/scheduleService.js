@@ -24,12 +24,15 @@ const updateSchedule = async (day, updates) =>
     setDefaultsOnInsert: true,
   });
 
-const updateTodayTokenLimit = async (limit, date = new Date()) =>
+const updateTokenLimitForDay = async (dayName, limit) =>
   Schedule.findOneAndUpdate(
-    { day: getTodayDayName(date), active: true },
+    { day: capitalizeDay(dayName), active: true },
     { tokenLimit: limit },
     { new: true, runValidators: true }
   );
+
+const updateTodayTokenLimit = async (limit, date = new Date()) =>
+  updateTokenLimitForDay(getTodayDayName(date), limit);
 
 module.exports = {
   getScheduleByDay,
@@ -38,4 +41,5 @@ module.exports = {
   getAllSchedules,
   updateSchedule,
   updateTodayTokenLimit,
+  updateTokenLimitForDay,
 };
