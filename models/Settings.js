@@ -22,6 +22,10 @@ const settingsSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    lastWebhookVerify: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
   },
   {
     timestamps: true,

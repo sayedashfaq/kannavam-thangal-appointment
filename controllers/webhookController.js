@@ -1,19 +1,32 @@
 const messageHandlerService = require('../services/messageHandlerService');
 const processedMessages = require('../utils/processedMessages');
+const Settings = require('../models/Settings');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
-// Temporary diagnostics while Meta verification is failing.
-// Remove once webhooks are stable.
-let lastVerifyAttempt = null;
+const rememberVerifyAttempt = async (attempt) => {
+  try {
+    await Settings.findOneAndUpdate(
+      {},
+      {
+        $set: {
+          lastWebhookVerify: attempt,
+        },
+      },
+      { upsert: true }
+    );
+  } catch (error) {
+    logger.warn('Could not persist verify attempt', { error: error.message });
+  }
+};
 
-const verifyWebhook = (req, res) => {
+const verifyWebhook = async (req, res) => {
   const mode = String(req.query['hub.mode'] || '').trim();
   const token = String(req.query['hub.verify_token'] || '').trim();
   const challenge = req.query['hub.challenge'];
   const expected = String(env.whatsapp.verifyToken || '').trim();
 
-  lastVerifyAttempt = {
+  const attempt = {
     at: new Date().toISOString(),
     mode,
     receivedToken: token,
@@ -22,20 +35,22 @@ const verifyWebhook = (req, res) => {
     expectedLength: expected.length,
     match: Boolean(expected) && token === expected,
     rawUrl: req.originalUrl,
-    query: req.query,
+    userAgent: req.get('user-agent') || '',
+    ip: req.ip,
   };
+
+  await rememberVerifyAttempt(attempt);
 
   logger.info('Webhook verify attempt', {
     mode,
-    match: lastVerifyAttempt.match,
+    match: attempt.match,
     receivedLength: token.length,
     expectedLength: expected.length,
     receivedPreview: token.slice(0, 12),
-    expectedPreview: expected.slice(0, 12),
+    userAgent: attempt.userAgent.slice(0, 80),
   });
 
-  // Accept the expected token, or any non-empty token while we finish Meta setup.
-  // This unblocks verification when Meta's UI and our env briefly disagree.
+  // Temporarily accept any non-empty token so Meta setup can complete.
   const openVerify = process.env.OPEN_WEBHOOK_VERIFY !== 'false';
   const accepted =
     mode === 'subscribe' &&
@@ -52,15 +67,20 @@ const verifyWebhook = (req, res) => {
   return res.status(403).send('Verify token mismatch');
 };
 
-const lastVerifyDebug = (_req, res) => {
-  res.status(200).json({
-    lastVerifyAttempt,
-    note: 'Temporary debug endpoint. Safe to ignore after webhook works.',
-  });
+const lastVerifyDebug = async (_req, res) => {
+  try {
+    const settings = await Settings.findOne().lean();
+    res.status(200).json({
+      lastVerifyAttempt: settings?.lastWebhookVerify || null,
+      expectedToken: String(env.whatsapp.verifyToken || '').trim(),
+      openVerify: process.env.OPEN_WEBHOOK_VERIFY !== 'false',
+      note: 'If at-time does not change after Verify and save, Meta is not calling this URL.',
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 };
 
-// Interactive replies are read as plain text so the existing flow keeps
-// working if buttons or list menus are enabled later.
 const readMessageText = (message) => {
   switch (message.type) {
     case 'text':
@@ -97,7 +117,6 @@ const extractTextMessages = (body) => {
 };
 
 const handleWebhook = async (req, res) => {
-  // Meta expects an immediate 200 and retries the delivery otherwise.
   res.sendStatus(200);
 
   try {
@@ -105,6 +124,7 @@ const handleWebhook = async (req, res) => {
     logger.info('Webhook POST received', {
       object: body.object,
       entries: Array.isArray(body.entry) ? body.entry.length : 0,
+      userAgent: (req.get('user-agent') || '').slice(0, 80),
     });
 
     if (body.object !== 'whatsapp_business_account') return;
