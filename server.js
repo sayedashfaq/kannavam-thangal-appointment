@@ -1,5 +1,6 @@
 require('dotenv').config();
 
+const path = require('path');
 const express = require('express');
 const env = require('./config/env');
 const { connectDB, disconnectDB } = require('./config/database');
@@ -21,6 +22,17 @@ app.use(
   })
 );
 app.use(express.urlencoded({ extended: true }));
+
+// Public legal pages required by Meta for app publishing.
+app.get('/privacy', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'privacy.html'));
+});
+app.get('/terms', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'terms.html'));
+});
+app.get('/data-deletion', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'data-deletion.html'));
+});
 
 app.use('/', webhookRoutes);
 
