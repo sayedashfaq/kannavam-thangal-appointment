@@ -13,8 +13,14 @@ const verifyWebhook = (req, res) => {
     return res.status(200).send(challenge);
   }
 
-  logger.warn('Webhook verification failed', { mode });
-  return res.sendStatus(403);
+  logger.warn('Webhook verification failed', {
+    mode,
+    receivedTokenPreview: token ? String(token).slice(0, 6) : null,
+    expectedSet: Boolean(env.whatsapp.verifyToken),
+  });
+
+  // Meta shows this as "Forbidden" when the verify token does not match.
+  return res.status(403).send('Verify token mismatch');
 };
 
 // Interactive replies are read as plain text so the existing flow keeps

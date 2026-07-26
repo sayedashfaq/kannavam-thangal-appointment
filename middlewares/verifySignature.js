@@ -11,7 +11,7 @@ const verifySignature = (req, res, next) => {
 
   if (!signature || !req.rawBody) {
     logger.warn('Webhook rejected: missing signature');
-    return res.sendStatus(401);
+    return res.status(401).send('Missing signature');
   }
 
   const expected = `sha256=${crypto
@@ -23,8 +23,8 @@ const verifySignature = (req, res, next) => {
   const computed = Buffer.from(expected);
 
   if (received.length !== computed.length || !crypto.timingSafeEqual(received, computed)) {
-    logger.warn('Webhook rejected: invalid signature');
-    return res.sendStatus(401);
+    logger.warn('Webhook rejected: invalid signature — check WHATSAPP_APP_SECRET on Render');
+    return res.status(401).send('Invalid signature');
   }
 
   return next();
