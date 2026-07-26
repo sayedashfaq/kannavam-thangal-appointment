@@ -26,6 +26,16 @@ const verifyWebhook = async (req, res) => {
   const challenge = req.query['hub.challenge'];
   const expected = String(env.whatsapp.verifyToken || '').trim();
 
+  // Bare browser visits to /webhook have no query string. Do not treat them
+  // as Meta verification attempts.
+  if (!mode && !token && !challenge) {
+    logger.info('Bare GET /webhook ignored (not a Meta verify request)');
+    return res
+      .status(200)
+      .type('text')
+      .send('Kannavam webhook is live. Use Meta Verify and save to connect.');
+  }
+
   const attempt = {
     at: new Date().toISOString(),
     mode,
