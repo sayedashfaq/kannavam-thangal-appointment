@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: kannavam-thangal-whatsapp
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TIMEZONE
+        value: Asia/Kolkata
+      - key: DYNAMIC_REPORTING_TIME
+        value: "true"
+      # The values below are secrets. Set them in the Render dashboard,
+      # never commit them to the repository.
+      - key: MONGODB_URI
+        sync: false
+      - key: WHATSAPP_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_VERIFY_TOKEN
+        sync: false
+      - key: WHATSAPP_APP_SECRET
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
