@@ -4,22 +4,25 @@ const env = require('../config/env');
 const logger = require('../utils/logger');
 
 const verifyWebhook = (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
+  const mode = String(req.query['hub.mode'] || '').trim();
+  const token = String(req.query['hub.verify_token'] || '').trim();
   const challenge = req.query['hub.challenge'];
+  const expected = String(env.whatsapp.verifyToken || '').trim();
 
-  if (mode === 'subscribe' && token === env.whatsapp.verifyToken) {
+  if (mode === 'subscribe' && expected && token === expected) {
     logger.info('Webhook verified successfully');
     return res.status(200).send(challenge);
   }
 
   logger.warn('Webhook verification failed', {
     mode,
-    receivedTokenPreview: token ? String(token).slice(0, 6) : null,
-    expectedSet: Boolean(env.whatsapp.verifyToken),
+    receivedLength: token.length,
+    expectedLength: expected.length,
+    receivedPreview: token.slice(0, 8),
+    expectedPreview: expected.slice(0, 8),
   });
 
-  // Meta shows this as "Forbidden" when the verify token does not match.
+  // Meta shows this as "Forbidden" / mismatch when the verify token does not match.
   return res.status(403).send('Verify token mismatch');
 };
 
