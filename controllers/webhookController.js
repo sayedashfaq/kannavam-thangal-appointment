@@ -4,19 +4,19 @@ const Settings = require('../models/Settings');
 const env = require('../config/env');
 const logger = require('../utils/logger');
 
-const rememberVerifyAttempt = async (attempt) => {
+const rememberWebhookEvent = async (field, value) => {
   try {
     await Settings.findOneAndUpdate(
       {},
       {
         $set: {
-          lastWebhookVerify: attempt,
+          [field]: value,
         },
       },
       { upsert: true }
     );
   } catch (error) {
-    logger.warn('Could not persist verify attempt', { error: error.message });
+    logger.warn('Could not persist webhook debug event', { error: error.message, field });
   }
 };
 
@@ -49,7 +49,7 @@ const verifyWebhook = async (req, res) => {
     ip: req.ip,
   };
 
-  await rememberVerifyAttempt(attempt);
+  await rememberWebhookEvent('lastWebhookVerify', attempt);
 
   logger.info('Webhook verify attempt', {
     mode,
@@ -82,9 +82,10 @@ const lastVerifyDebug = async (_req, res) => {
     const settings = await Settings.findOne().lean();
     res.status(200).json({
       lastVerifyAttempt: settings?.lastWebhookVerify || null,
+      lastMessageWebhook: settings?.lastWebhookPost || null,
       expectedToken: String(env.whatsapp.verifyToken || '').trim(),
       openVerify: process.env.OPEN_WEBHOOK_VERIFY !== 'false',
-      note: 'If at-time does not change after Verify and save, Meta is not calling this URL.',
+      note: 'lastMessageWebhook updates when Meta POSTs a messages event.',
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -131,15 +132,26 @@ const handleWebhook = async (req, res) => {
 
   try {
     const body = req.body || {};
+    const messages = extractTextMessages(body);
+
+    await rememberWebhookEvent('lastWebhookPost', {
+      at: new Date().toISOString(),
+      object: body.object || null,
+      messageCount: messages.length,
+      firstFrom: messages[0]?.from || null,
+      firstText: messages[0]?.text?.slice(0, 80) || null,
+      userAgent: (req.get('user-agent') || '').slice(0, 80),
+    });
+
     logger.info('Webhook POST received', {
       object: body.object,
-      entries: Array.isArray(body.entry) ? body.entry.length : 0,
+      messageCount: messages.length,
       userAgent: (req.get('user-agent') || '').slice(0, 80),
     });
 
     if (body.object !== 'whatsapp_business_account') return;
 
-    for (const message of extractTextMessages(body)) {
+    for (const message of messages) {
       if (processedMessages.isDuplicate(message.id)) {
         logger.debug('Ignored duplicate webhook delivery', { messageId: message.id });
         continue;
