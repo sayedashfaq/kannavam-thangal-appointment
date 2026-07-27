@@ -219,6 +219,9 @@ const runFlowChecks = async () => {
         { whatsappNumber: { $in: TEST_NUMBERS } },
       ],
     });
+    await Conversation.deleteMany({
+      phone: { $in: [...TEST_NUMBERS.map(waNumber), waNumber(ADMIN), ADMIN] },
+    });
     await counterService.setSequence(counterKey, 0);
     await settingsService.updateSettings({
       bookingOpen: true,
@@ -298,15 +301,23 @@ const runFlowChecks = async () => {
 
     // --- Duplicate booking ------------------------------------------------
     const duplicateFrom = waNumber(TEST_NUMBERS[0]);
-    await send(duplicateFrom, 'Hi');
+    const hiAgain = (await send(duplicateFrom, 'Hi')).join('\n');
+    check(
+      'Hi again shows existing token immediately',
+      hiAgain.includes('already have an appointment') &&
+        hiAgain.includes(firstBooking.tokenNumber),
+      hiAgain.slice(0, 100)
+    );
+
     await send(duplicateFrom, 'Muhammed Ali');
     await send(duplicateFrom, 'Kannur');
     await send(duplicateFrom, TEST_NUMBERS[0]);
     const duplicateReply = (await send(duplicateFrom, '2')).join('\n');
     check(
-      'Duplicate booking is blocked',
-      duplicateReply.includes('already have an appointment'),
-      duplicateReply.slice(0, 60)
+      'Duplicate booking is blocked even mid-flow',
+      duplicateReply.includes('already have an appointment') ||
+        duplicateReply.includes(firstBooking.tokenNumber),
+      duplicateReply.slice(0, 80)
     );
     check(
       'Duplicate did not create a second row',
@@ -478,16 +489,20 @@ const runFlowChecks = async () => {
     await send(waNumber(ADMIN), 'open');
 
     // --- Not a consultation day ------------------------------------------
-    await Schedule.updateOne({ _id: schedule._id }, { active: false });
+    await Schedule.updateMany({}, { active: false });
     const offDayFrom = waNumber(TEST_NUMBERS[5]);
     const offDayReply = (await send(offDayFrom, 'Hi')).join('\n');
     check(
       'Booking is refused when no consultation days are active',
-      offDayReply.toLowerCase().includes('no consultation') ||
-        offDayReply.includes('Tuesday') ||
-        offDayReply.includes('Saturday'),
+      !offDayReply.includes('Full Name') &&
+        (offDayReply.toLowerCase().includes('no consultation') ||
+          offDayReply.includes('Tuesday') ||
+          offDayReply.includes('Saturday') ||
+          offDayReply.toLowerCase().includes('closed') ||
+          offDayReply.toLowerCase().includes('paused')),
       offDayReply.slice(0, 80)
     );
+    await Schedule.updateMany({ _id: { $ne: schedule._id } }, { active: false });
     await Schedule.updateOne({ _id: schedule._id }, { active: true, bookingOpen: true });
 
     // --- Admin commands ---------------------------------------------------
@@ -543,6 +558,7 @@ const runFlowChecks = async () => {
     const badFormat = (await send(waNumber(ADMIN), 'schedule Tuesday Adhur 10:00')).join('\n');
     check('Malformed schedule command is explained', badFormat.includes('Usage'));
 
+    await Conversation.deleteMany({ phone: { $in: [waNumber(ADMIN), ADMIN] } });
     const unknown = (await send(waNumber(ADMIN), 'opne')).join('\n');
     check('Unknown admin command is reported', unknown.includes('Unknown command'), unknown.slice(0, 60));
 

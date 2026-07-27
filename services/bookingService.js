@@ -235,6 +235,34 @@ const findDuplicateBooking = async (phone, whatsappNumber = '', date) => {
   });
 };
 
+/**
+ * Any still-active booking on today or a future consultation day.
+ * Used so a visitor who booked Wednesday (while Tuesday was on leave)
+ * cannot book Tuesday again after leave is cleared.
+ */
+const findActiveUpcomingBooking = async (
+  phone,
+  whatsappNumber = '',
+  now = new Date()
+) => {
+  const localPhone = toLocalNumber(phone);
+  const localWhatsapp = toLocalNumber(whatsappNumber);
+  const candidates = [...new Set([localPhone, localWhatsapp].filter(Boolean))];
+  if (candidates.length === 0) return null;
+
+  const booking = await Booking.findOne({
+    status: BOOKING_STATUS.BOOKED,
+    bookingDate: { $gte: getBookingDate(now) },
+    $or: [{ phone: { $in: candidates } }, { whatsappNumber: { $in: candidates } }],
+  }).sort({ bookingDate: 1, createdAt: 1 });
+
+  if (!booking) return null;
+
+  booking.displayDate = formatDisplayDate(booking.bookingDate);
+  booking.label = formatConsultationLabel(booking.bookingDate, now);
+  return booking;
+};
+
 const findBookingByPhone = async (phone, date = new Date()) => {
   const localPhone = toLocalNumber(phone);
   if (!localPhone) return null;
@@ -346,11 +374,15 @@ const createBooking = async ({
   const localPhone = toLocalNumber(phone);
   const localWhatsapp = toLocalNumber(whatsappNumber);
 
-  const duplicate = await findDuplicateBooking(localPhone, localWhatsapp, active.date);
-  if (duplicate) {
-    duplicate.displayDate = active.displayDate;
+  // One active appointment at a time across upcoming consultation days.
+  const existingUpcoming = await findActiveUpcomingBooking(
+    localPhone,
+    localWhatsapp,
+    now
+  );
+  if (existingUpcoming) {
     const error = new Error(BookingError.DUPLICATE_BOOKING);
-    error.meta = { booking: duplicate };
+    error.meta = { booking: existingUpcoming };
     throw error;
   }
 
@@ -490,6 +522,7 @@ module.exports = {
   getBookingsForDate,
   getActiveBookingCount,
   findDuplicateBooking,
+  findActiveUpcomingBooking,
   findBookingByPhone,
   findBookingByToken,
   createBooking,

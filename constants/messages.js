@@ -152,17 +152,19 @@ Please message again then — no need to wait on the consultation day itself.`;
   },
 
   DUPLICATE_BOOKING: (booking) =>
-    `You already have an appointment for *${booking.consultationDay}*${
-      booking.displayDate ? ` (${booking.displayDate})` : ''
-    }.
+    `You already have an appointment.
 
 *Token Number:* ${booking.tokenNumber}
+*Consultation:* ${booking.label || `${booking.consultationDay}${booking.displayDate ? ` (${booking.displayDate})` : ''}`}
 *Reporting Time:* ${booking.reportingTime}
 *Members:* ${booking.memberCount || 1}
-*Location:* ${booking.consultationLocation}`,
+*Location:* ${booking.consultationLocation}
+
+Please arrive *30 minutes before* your reporting time.
+Send *Hi* anytime to see these details again.`,
 
   ALREADY_BOOKED_HINT:
-    'Your appointment is already confirmed. Send *Hi* if you would like to start again.',
+    'Your appointment is already confirmed. Send *Hi* to see your token details.',
 
   GENERIC_ERROR:
     'Sorry, something went wrong while processing your request. Please try again in a few minutes.',

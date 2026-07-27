@@ -85,9 +85,14 @@ const handleVisitorMessage = async (from, text) => {
       await handleMembersInput(from, message, conversation);
       break;
 
-    case CONVERSATION_STEPS.COMPLETED:
-      await reply(from, messages.ALREADY_BOOKED_HINT);
+    case CONVERSATION_STEPS.COMPLETED: {
+      const existing = await bookingService.findActiveUpcomingBooking(from, from);
+      await reply(
+        from,
+        existing ? messages.DUPLICATE_BOOKING(existing) : messages.ALREADY_BOOKED_HINT
+      );
       break;
+    }
 
     default:
       await startBookingFlow(from);
@@ -95,6 +100,16 @@ const handleVisitorMessage = async (from, text) => {
 };
 
 const startBookingFlow = async (from) => {
+  // Already booked for an upcoming day → show token details immediately.
+  // This also stops a second booking when leave moved them to Wednesday
+  // and Tuesday is later reopened.
+  const existing = await bookingService.findActiveUpcomingBooking(from, from);
+  if (existing) {
+    await conversationService.setStep(from, CONVERSATION_STEPS.COMPLETED, {});
+    await reply(from, messages.DUPLICATE_BOOKING(existing));
+    return;
+  }
+
   const snapshot = await bookingService.getAvailabilitySnapshot();
 
   // Tell visitors immediately whether they can book — with the exact day —
