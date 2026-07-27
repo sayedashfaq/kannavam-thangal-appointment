@@ -133,8 +133,10 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | `upcoming` | Next days with dates, leave flags, and token windows |
 | `find <phone>` | Booking details for a visitor |
 | `cancel <token>` | Cancel a booking, e.g. `cancel T005` |
-| `members` | Show max family members allowed on one token |
-| `members 5` | Set max family members per token (visitor is asked while booking) |
+| `change adhur` / `location adhur` | Set active day's venue to Jalaliya Manzil Adhur |
+| `change bandichal` | Set active day's venue to Jalaliya Manzil Bandichal |
+| `change adhur tuesday` | Set Tuesday to Adhur |
+| `change bandichal saturday` | Set Saturday to Bandichal |
 | `schedules` | Show configured weekdays |
 | `schedule <day> "<location>" <mStart> <mEnd> <aStart> <aEnd> <limit>` | Update a day |
 | `help` | Full command list |

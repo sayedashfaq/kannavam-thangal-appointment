@@ -14,7 +14,7 @@ module.exports = {
 
     const day = availability?.active;
     if (day?.label) {
-      return `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+      return `.السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Welcome to the Appointment Service of *${CONSULTANT}*.
 
@@ -30,7 +30,7 @@ You are booking for:
 Kindly provide your Full Name.`;
     }
 
-    return `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+    return `.السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Welcome to the Appointment Service of *${CONSULTANT}*.
 
@@ -41,7 +41,7 @@ Kindly provide your Full Name.`;
 
   ASK_PHONE: 'Please enter your mobile number.',
 
-  ASK_MEMBERS: (maxMembers = 10) =>
+  ASK_MEMBERS: (maxMembers = 5) =>
     `How many family members will come with this token (including you)?\n\nReply with a number from *1* to *${maxMembers}*.`,
 
   INVALID_NAME: 'Please enter a valid full name.',
@@ -74,7 +74,7 @@ Kindly provide your Full Name.`;
     }\n\nPlease send *Hi* again when booking reopens.`,
 
   LEAVE_NOTICE_TO_VISITOR: ({ visitorName, tokenNumber, label, reason }) =>
-    `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+    `.السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Dear ${visitorName || 'Visitor'},
 
@@ -168,7 +168,7 @@ Please message again then — no need to wait on the consultation day itself.`;
     'Sorry, something went wrong while processing your request. Please try again in a few minutes.',
 
   BOOKING_CONFIRMATION: (booking) =>
-    `Assalamu Alaikum ورحمة الله وبركاته
+    `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Your appointment with *${CONSULTANT}* has been confirmed.
 
@@ -187,9 +187,21 @@ ${booking.consultationLocation}
 *Reporting Time:*
 ${booking.reportingTime}
 
-Please arrive before your reporting time.
+Please arrive *30 minutes before* your reporting time.
 
 JazakAllahu Khairan.`,
+
+  LOCATION_PIN: (booking, venue) =>
+    `📍 *Location for your visit*
+
+*${booking.consultationLocation}*
+Consultation: ${booking.label || booking.consultationDay}
+Reporting time: ${booking.reportingTime}
+
+Please arrive *30 minutes before* your reporting time.
+
+Open map:
+${venue?.mapsUrl || 'Ask the office for directions.'}`,
 
   ADMIN_NEW_BOOKING: (booking) =>
     `📌 *New Appointment*
@@ -211,8 +223,8 @@ JazakAllahu Khairan.`,
 4️⃣ Bookings — \`today\` / \`list\` / \`list tuesday\`
 5️⃣ Day leave — \`leave tuesday\`
 6️⃣ Open a day again — \`open tuesday\`
-7️⃣ Upcoming — \`upcoming\`
-8️⃣ Family size limit — \`members 5\`
+7️⃣ Venue — \`change adhur\` / \`change bandichal\`
+8️⃣ Family size — \`members 5\`
 9️⃣ Token limit — \`limit 25\`
 🔟 Help — \`help\``,
 
@@ -241,6 +253,11 @@ JazakAllahu Khairan.`,
 \`limit 25\` — Token limit for the active day
 \`members\` — Show max family members per token
 \`members 5\` — Set max family members allowed on one token
+\`change adhur\` — Set active day's venue to Jalaliya Manzil Adhur
+\`change bandichal\` — Set active day's venue to Jalaliya Manzil Bandichal
+\`change adhur tuesday\` — Set Tuesday venue to Adhur
+\`change bandichal saturday\` — Set Saturday venue to Bandichal
+\`location\` — Same as \`change\`
 \`help\` — This help
 
 *Update a schedule*
@@ -248,6 +265,12 @@ JazakAllahu Khairan.`,
 
   BOOKING_OPENED: 'All booking is open again.',
   BOOKING_CLOSED_ADMIN: 'All booking is paused temporarily.\nVisitors cannot take new tokens until you send `open`.',
+  LOCATION_USAGE: (venuesHelp) =>
+    `Change consultation venue.\n\nExamples:\n\`change adhur\`\n\`change bandichal\`\n\`change adhur tuesday\`\n\`change bandichal saturday\`\n\nVenues:\n${venuesHelp}`,
+  LOCATION_UPDATED: ({ day, venue }) =>
+    `Venue updated.\n\n*Day:* ${day}\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}`,
+  LOCATION_UPDATED_MULTI: ({ days, venue }) =>
+    `Venue updated for *${days.join(', ')}*.\n\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}`,
   LEAVE_USAGE:
     'Specify the consultation day.\n\nExamples:\n`leave tuesday`\n`leave saturday emergency`\n`leave next wednesday Travelling`\n\nOther days stay open for booking.\nUse `close` if you need to pause *everything*.',
   RESUME_USAGE:

@@ -8,6 +8,7 @@ const bookingService = require('./bookingService');
 const settingsService = require('./settingsService');
 const adminService = require('./adminService');
 const whatsappService = require('./whatsappService');
+const { getVenueByLocationName } = require('../constants/venues');
 const logger = require('../utils/logger');
 
 const { BookingError } = bookingService;
@@ -19,9 +20,9 @@ const ACTIVE_STEPS = [
   CONVERSATION_STEPS.WAIT_MEMBERS,
 ];
 
-const reply = async (to, text) => {
+const reply = async (to, text, options = {}) => {
   try {
-    await whatsappService.sendTextMessage(to, text);
+    await whatsappService.sendTextMessage(to, text, options);
   } catch (error) {
     logger.error('Could not deliver reply', { to, error: error.message });
   }
@@ -192,10 +193,16 @@ const handleMembersInput = async (from, membersInput, conversation) => {
 
     await conversationService.setStep(from, CONVERSATION_STEPS.COMPLETED, {});
     await reply(from, messages.BOOKING_CONFIRMATION(booking));
+    await sendLocationPin(from, booking);
     await notifyAdmin(booking);
   } catch (error) {
     await handleBookingFailure(from, phone, error);
   }
+};
+
+const sendLocationPin = async (to, booking) => {
+  const venue = getVenueByLocationName(booking.consultationLocation);
+  await reply(to, messages.LOCATION_PIN(booking, venue), { previewUrl: true });
 };
 
 const notifyAdmin = async (booking) => {

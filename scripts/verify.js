@@ -148,14 +148,24 @@ const bookVisitor = async (local, name, place, members = 2) => {
   const placePrompt = await send(from, name);
   const phonePrompt = await send(from, place);
   const membersPrompt = await send(from, local);
-  const confirmation = await send(from, String(members));
+  await send(from, String(members));
+
+  const visitorTexts = outbox
+    .filter((entry) => phonesMatch(entry.to, from))
+    .map((entry) => entry.text);
+  const confirmation =
+    visitorTexts.find((text) => text.includes('Token Number')) ||
+    visitorTexts.join('\n');
+  const locationPin =
+    visitorTexts.find((text) => text.includes('Open map:') || text.includes('maps.')) || '';
 
   return {
     welcome: welcome.join('\n'),
     placePrompt: placePrompt.join('\n'),
     phonePrompt: phonePrompt.join('\n'),
     membersPrompt: membersPrompt.join('\n'),
-    confirmation: lastTo(from) || confirmation.join('\n'),
+    confirmation,
+    locationPin,
     adminNotice: lastTo(ADMIN),
   };
 };
@@ -232,6 +242,16 @@ const runFlowChecks = async () => {
       'Confirmation includes member count',
       first.confirmation.includes('Members'),
       first.confirmation.slice(0, 80)
+    );
+    check(
+      'Confirmation asks to arrive 30 minutes early',
+      first.confirmation.includes('30 minutes'),
+      first.confirmation.slice(0, 100)
+    );
+    check(
+      'Visitor receives a location map link',
+      first.locationPin.includes('maps.') || first.locationPin.includes('Open map:'),
+      first.locationPin.slice(0, 80)
     );
     check(
       'Confirmation names the consultant',

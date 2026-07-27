@@ -8,6 +8,7 @@ const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
 const bookingService = require('./bookingService');
 const leaveService = require('./leaveService');
+const { resolveVenue, listVenuesHelp } = require('../constants/venues');
 const logger = require('../utils/logger');
 
 const { BookingError } = bookingService;
@@ -34,6 +35,8 @@ const PREFIX_COMMANDS = [
   'list',
   'open',
   'members',
+  'change',
+  'location',
 ];
 
 // True when the admin clearly meant to issue a command, so a typo gets a
@@ -111,6 +114,10 @@ const handleAdminCommand = async (phone, text) => {
 
     case 'members':
       return updateMembersReply(argument);
+
+    case 'change':
+    case 'location':
+      return changeLocationReply(argument);
 
     case 'schedule':
       return updateScheduleReply(raw);
@@ -360,6 +367,47 @@ const updateMembersReply = async (argument) => {
 
   await settingsService.updateSettings({ maxMembersPerToken: max });
   return messages.MEMBERS_UPDATED(max);
+};
+
+/**
+ * Parses:
+ *   change adhur
+ *   change bandichal
+ *   change adhur tuesday
+ *   change bandichal saturday
+ *   location bendichal wednesday
+ */
+const changeLocationReply = async (argument) => {
+  const tokens = String(argument || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (tokens.length === 0) {
+    return messages.LOCATION_USAGE(listVenuesHelp());
+  }
+
+  const venue = resolveVenue(tokens[0]);
+  if (!venue) {
+    return messages.LOCATION_USAGE(listVenuesHelp());
+  }
+
+  // Optional weekday — otherwise update the active consultation day.
+  if (tokens[1]) {
+    if (!isValidWeekday(tokens[1])) return messages.INVALID_DAY;
+    const day = capitalizeDay(tokens[1]);
+    const schedule = await scheduleService.updateLocationForDay(day, venue.name);
+    return messages.LOCATION_UPDATED({ day: schedule.day, venue });
+  }
+
+  const status = await bookingService.getTodayStatus();
+  if (!status.schedule?.day) return messages.NO_SCHEDULE_TODAY;
+
+  const schedule = await scheduleService.updateLocationForDay(
+    status.schedule.day,
+    venue.name
+  );
+  return messages.LOCATION_UPDATED({ day: schedule.day, venue });
 };
 
 const updateScheduleReply = async (raw) => {

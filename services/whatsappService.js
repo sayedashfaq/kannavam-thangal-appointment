@@ -83,7 +83,7 @@ class WhatsAppService {
     throw lastError;
   }
 
-  async sendTextMessage(to, text) {
+  async sendTextMessage(to, text, { previewUrl = false } = {}) {
     const recipient = formatPhoneForWhatsApp(to);
 
     if (!recipient) {
@@ -101,7 +101,7 @@ class WhatsAppService {
           recipient_type: 'individual',
           to: recipient,
           type: 'text',
-          text: { preview_url: false, body: chunk },
+          text: { preview_url: Boolean(previewUrl), body: chunk },
         });
 
         logger.info('Outgoing WhatsApp message', {

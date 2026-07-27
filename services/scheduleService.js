@@ -31,6 +31,13 @@ const updateTokenLimitForDay = async (dayName, limit) =>
     { new: true, runValidators: true }
   );
 
+const updateLocationForDay = async (dayName, location) =>
+  Schedule.findOneAndUpdate(
+    { day: capitalizeDay(dayName) },
+    { location: String(location).trim(), active: true },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true }
+  );
+
 const updateTodayTokenLimit = async (limit, date = new Date()) =>
   updateTokenLimitForDay(getTodayDayName(date), limit);
 
@@ -42,4 +49,5 @@ module.exports = {
   updateSchedule,
   updateTodayTokenLimit,
   updateTokenLimitForDay,
+  updateLocationForDay,
 };
