@@ -240,7 +240,8 @@ JazakAllahu Khairan.`,
       reason ? `\nReason: ${reason}` : ''
     }\n\nNew bookings for that day are blocked.\nOther consultation days stay available.\n\nCancelled bookings: ${cancelledCount}\nVisitors notified: ${notifiedCount}\n\nChanged your mind later? Send \`open ${label.split(',')[0].toLowerCase().split(' ')[0]}\`.`,
   LEAVE_ALREADY_SET: (label) => `*${label}* is already marked on leave.\nSend \`open\` with that day name to clear it.`,
-  LEAVE_CLEARED: (label) => `*${label}* is open again.\nVisitors can book that day now.`,
+  LEAVE_CLEARED: (label) =>
+    `*${label}* is open again.\nVisitors can book that day now.\nTokens restart from *T001* with morning reporting times.`,
   LEAVE_NOT_SET: (label) => `*${label}* is not on leave.`,
   LEAVE_NO_DAY:
     'No matching consultation day found in the next 3 weeks.\nUsual days: Tuesday, Wednesday, Saturday.',

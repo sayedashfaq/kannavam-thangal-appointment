@@ -62,8 +62,16 @@ const bookingSchema = new mongoose.Schema(
   }
 );
 
-// A token number can never repeat within the same consultation day.
-bookingSchema.index({ bookingDate: 1, tokenNumber: 1 }, { unique: true });
+// Token numbers must be unique among *active* bookings for a day.
+// Cancelled leave bookings can keep their old T001… numbers in history so
+// a day can restart from T001 after the consultant reopens it.
+bookingSchema.index(
+  { bookingDate: 1, tokenNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: BOOKING_STATUS.BOOKED },
+  }
+);
 bookingSchema.index({ bookingDate: 1, phone: 1 });
 bookingSchema.index({ bookingDate: 1, status: 1 });
 

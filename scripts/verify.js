@@ -8,7 +8,7 @@
 require('dotenv').config();
 
 const mongoose = require('mongoose');
-const { connectDB, disconnectDB } = require('../config/database');
+const { connectDB, disconnectDB, ensureBookingTokenIndex } = require('../config/database');
 const env = require('../config/env');
 
 const whatsappService = require('../services/whatsappService');
@@ -160,6 +160,8 @@ const bookVisitor = async (local, name, place) => {
 };
 
 const runFlowChecks = async () => {
+  await ensureBookingTokenIndex();
+
   const today = getTodayDayName();
   let schedule = await Schedule.findOne({ day: today });
   let createdTempSchedule = false;
@@ -180,6 +182,9 @@ const runFlowChecks = async () => {
   }
 
   const originalSchedule = schedule.toObject();
+  const otherSchedules = await Schedule.find({ _id: { $ne: schedule._id } });
+  const otherScheduleSnapshots = otherSchedules.map((item) => item.toObject());
+
   const settings = await settingsService.getSettings();
   const originalSettings = {
     bookingOpen: settings.bookingOpen,
@@ -190,10 +195,20 @@ const runFlowChecks = async () => {
   const originalSeq = await counterService.peekSequence(counterKey);
 
   try {
+    // Keep only today's schedule active so leave/token checks stay on one day.
+    await Schedule.updateMany({ _id: { $ne: schedule._id } }, { active: false });
     await Schedule.updateOne(
       { _id: schedule._id },
       { active: true, bookingOpen: true, tokenLimit: 30 }
     );
+    await DayLeave.deleteMany({});
+    await Booking.deleteMany({
+      $or: [
+        { phone: { $in: TEST_NUMBERS } },
+        { whatsappNumber: { $in: TEST_NUMBERS } },
+      ],
+    });
+    await counterService.setSequence(counterKey, 0);
     await settingsService.updateSettings({
       bookingOpen: true,
       consultantOnLeave: false,
@@ -384,7 +399,8 @@ const runFlowChecks = async () => {
     const resumeReply = (await send(waNumber(ADMIN), `resume ${leaveTargetDay}`)).join('\n');
     check(
       'Resume clears day leave',
-      resumeReply.toLowerCase().includes('leave cleared') ||
+      resumeReply.toLowerCase().includes('open again') ||
+        resumeReply.toLowerCase().includes('leave cleared') ||
         resumeReply.toLowerCase().includes('cleared'),
       resumeReply.slice(0, 80)
     );
@@ -398,6 +414,17 @@ const runFlowChecks = async () => {
     check(
       'Visitor can book again after leave is cleared',
       afterResume.confirmation.includes('Token Number') && Boolean(firstBookingAfterLeave)
+    );
+    check(
+      'Tokens restart at T001 after leave reopen',
+      firstBookingAfterLeave?.tokenNumber === 'T001' &&
+        firstBookingAfterLeave?.tokenSequence === 1,
+      `${firstBookingAfterLeave?.tokenNumber} seq=${firstBookingAfterLeave?.tokenSequence}`
+    );
+    check(
+      'Reporting time restarts at morning start after leave reopen',
+      String(firstBookingAfterLeave?.reportingTime || '').includes('10:00'),
+      firstBookingAfterLeave?.reportingTime
     );
 
     // --- Booking closed (global pause) ------------------------------------
@@ -413,7 +440,7 @@ const runFlowChecks = async () => {
     await send(waNumber(ADMIN), 'open');
 
     // --- Not a consultation day ------------------------------------------
-    await Schedule.updateMany({}, { active: false });
+    await Schedule.updateOne({ _id: schedule._id }, { active: false });
     const offDayFrom = waNumber(TEST_NUMBERS[5]);
     const offDayReply = (await send(offDayFrom, 'Hi')).join('\n');
     check(
@@ -423,8 +450,7 @@ const runFlowChecks = async () => {
         offDayReply.includes('Saturday'),
       offDayReply.slice(0, 80)
     );
-    await Schedule.updateMany({}, { active: true });
-    await Schedule.updateOne({ _id: schedule._id }, { active: true });
+    await Schedule.updateOne({ _id: schedule._id }, { active: true, bookingOpen: true });
 
     // --- Admin commands ---------------------------------------------------
     const menu = (await send(waNumber(ADMIN), 'menu')).join('\n');
@@ -468,7 +494,7 @@ const runFlowChecks = async () => {
     const goodLimit = (await send(waNumber(ADMIN), 'limit 28')).join('\n');
     check('Token limit can be updated', goodLimit.includes('28'), goodLimit.slice(0, 60));
     const limitCheck = await Schedule.findById(schedule._id);
-    check('Token limit is persisted', limitCheck.tokenLimit === 28);
+    check('Token limit is persisted', limitCheck?.tokenLimit === 28);
 
     const badDay = (await send(waNumber(ADMIN), 'schedule Funday "Somewhere" 10:00 13:00 14:00 16:00 30')).join('\n');
     check('Invalid weekday is rejected', badDay.includes('Invalid day'), badDay.slice(0, 60));
@@ -519,6 +545,19 @@ const runFlowChecks = async () => {
           tokenLimit: originalSchedule.tokenLimit,
           bookingOpen: originalSchedule.bookingOpen,
           active: originalSchedule.active,
+        }
+      );
+    }
+
+    for (const snapshot of otherScheduleSnapshots) {
+      // eslint-disable-next-line no-await-in-loop
+      await Schedule.updateOne(
+        { _id: snapshot._id },
+        {
+          active: snapshot.active,
+          bookingOpen: snapshot.bookingOpen,
+          tokenLimit: snapshot.tokenLimit,
+          location: snapshot.location,
         }
       );
     }

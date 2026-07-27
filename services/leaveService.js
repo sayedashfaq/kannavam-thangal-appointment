@@ -12,8 +12,17 @@ const {
 const { capitalizeDay, isValidWeekday } = require('../helpers/validationHelper');
 const scheduleService = require('./scheduleService');
 const whatsappService = require('./whatsappService');
+const counterService = require('./counterService');
 const messages = require('../constants/messages');
 const logger = require('../utils/logger');
+
+const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
+
+/** After a full-day leave wipe, the next visitor should get T001 / morning start. */
+const resetDayTokenCounter = async (date) => {
+  await counterService.setSequence(tokenCounterKey(date), 0);
+  logger.info('Token counter reset for consultation day', { date: getDateKey(date) });
+};
 
 const DAY_ALIASES = {
   sun: 'Sunday',
@@ -170,6 +179,9 @@ const setDayLeave = async (dayName, reason = '', fromDate = new Date()) => {
     reason
   );
 
+  // Day starts fresh if/when the consultant reopens it.
+  await resetDayTokenCounter(target.date);
+
   const leave = await DayLeave.create({
     leaveDate: getBookingDate(target.date),
     dayName: target.dayName,
@@ -207,6 +219,9 @@ const clearDayLeave = async (dayName, fromDate = new Date()) => {
   }
 
   await DayLeave.deleteOne({ _id: leave._id });
+
+  // Change of mind: tokens and reporting times restart from the beginning.
+  await resetDayTokenCounter(target.date);
 
   logger.info('Day leave cleared', {
     dayName: target.dayName,

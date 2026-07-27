@@ -150,8 +150,9 @@ schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30
 
 - Numbering restarts at `T001` on every consultation day
 - Numbers come from an atomic per-day counter, so simultaneous bookings can never share a token
-- Cancelling a booking frees a slot against the limit but never releases its number for reuse
-- A unique index on day plus token number enforces this at the database level
+- Cancelling a single booking frees a slot against the limit but does not reuse that token number
+- If a whole day is cancelled by `leave <day>` and later reopened with `open <day>`, tokens and reporting times restart from `T001` / morning start
+- A unique index on day plus token number for active (`BOOKED`) rows enforces this at the database level
 
 ## Project Structure
 
