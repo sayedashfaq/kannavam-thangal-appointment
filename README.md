@@ -108,11 +108,11 @@ VERIFY_MEMORY=1 npm run verify
 ## Visitor Flow
 
 1. Visitor sends **Hi**, **Hello** or **Assalamu Alaikum**
-2. System asks for the full name
-3. System asks for the place
-4. System asks for the mobile number and validates it
-5. System checks booking status, leave, consultation day and remaining tokens
-6. Visitor receives the token number, location and reporting time; the admin receives a notification
+2. System immediately shows whether booking is open, with the **exact consultation date** (e.g. *Tuesday, 28 Jul 2026 (tomorrow)*), venue and tokens left — or explains when the next day opens
+3. If booking is open, system asks for full name → place → mobile number
+4. Visitor receives the token number, dated consultation, location and reporting time; the admin is notified
+
+Tokens open from the **day before** each consultation day (Asia/Kolkata). If the nearest day is full, the system moves to the next day whose token window is already open.
 
 ## Admin Commands
 
@@ -125,13 +125,13 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | `close` | Close booking |
 | `leave [reason]` | Mark the consultant unavailable and close booking |
 | `resume` | Resume booking |
-| `status` | Booking state, leave state, day, location, booked count, remaining tokens |
-| `today` | Today's bookings |
-| `list` | Same as `today` |
+| `status` | Active consultation status with dates |
+| `today` / `list` | Bookings for the active consultation day |
+| `upcoming` | Next consultation days with dates and token windows |
 | `find <phone>` | Booking details for a visitor |
 | `cancel <token>` | Cancel a booking, e.g. `cancel T005` |
-| `limit <number>` | Update today's token limit, e.g. `limit 25` |
-| `schedules` | Show all configured days |
+| `limit <number>` | Update token limit for the active consultation day |
+| `schedules` | Show configured weekdays |
 | `schedule <day> "<location>" <mStart> <mEnd> <aStart> <aEnd> <limit>` | Update a day |
 | `help` | Full command list |
 

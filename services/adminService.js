@@ -24,6 +24,7 @@ const SIMPLE_COMMANDS = [
   'today',
   'list',
   'schedules',
+  'upcoming',
 ];
 
 const PREFIX_COMMANDS = ['find', 'cancel', 'limit', 'schedule', 'leave'];
@@ -90,6 +91,9 @@ const handleAdminCommand = async (phone, text) => {
     case 'schedules':
       return formatSchedules();
 
+    case 'upcoming':
+      return formatUpcoming();
+
     case 'find':
       return findBookingReply(argument);
 
@@ -113,31 +117,38 @@ const formatStatus = async () => {
     ? `On Leave 🚫${status.leaveReason ? ` (${status.leaveReason})` : ''}`
     : 'Available ✅';
 
-  const windowLine = status.windowOpen
-    ? 'Open for this consultation day ✅'
-    : status.opensOn
-      ? `Opens ${status.opensOn}`
-      : 'Closed';
+  const windowLine = status.bookingOpen
+    ? 'Open — visitors can book now ✅'
+    : status.nextOpening?.opensOn
+      ? `Opens ${status.nextOpening.opensOn} for ${status.nextOpening.label}`
+      : status.opensOn
+        ? `Opens ${status.opensOn}`
+        : 'Closed';
 
   return `*Booking Status*
 
-*Booking:* ${status.bookingOpen ? 'Open ✅' : 'Closed ❌'}
+*Today:* ${status.todayLabel || status.dayName}
+*Visitors can book:* ${status.bookingOpen ? 'Yes ✅' : 'No ❌'}
 *Token Window:* ${windowLine}
 *Leave Status:* ${leaveLine}
-*Consultation Day:* ${status.consultationDay}
+*Active Consultation:* ${status.consultationDay}
 *Location:* ${status.location}
 *Booked Count:* ${status.bookedCount}
-*Remaining Tokens:* ${status.remainingTokens} of ${status.tokenLimit}`;
+*Remaining Tokens:* ${status.remainingTokens} of ${status.tokenLimit}
+
+Tip: send \`upcoming\` for the next consultation dates.`;
 };
 
 const formatTodayBookings = async () => {
   const status = await bookingService.getTodayStatus();
   const bookings = await bookingService.getTodayBookings();
 
-  if (!status.windowOpen) {
-    return status.opensOn
-      ? `No active booking window right now.\n\nNext tokens open on *${status.opensOn}* for *${status.consultationDay}*.`
-      : messages.NO_BOOKINGS_TODAY;
+  if (!status.tokenWindowOpen && !status.bookingOpen) {
+    return status.nextOpening?.label
+      ? `No active booking window right now.\n\nNext tokens open on *${status.nextOpening.opensOn}* for *${status.nextOpening.label}*.`
+      : status.opensOn
+        ? `No active booking window right now.\n\nNext tokens open on *${status.opensOn}* for *${status.consultationDay}*.`
+        : messages.NO_BOOKINGS_TODAY;
   }
 
   if (bookings.length === 0) {
@@ -163,7 +174,33 @@ const formatSchedules = async () => {
       `*${schedule.day}* — ${schedule.location}\n${schedule.morningStart}–${schedule.morningEnd} · ${schedule.afternoonStart}–${schedule.afternoonEnd} · limit ${schedule.tokenLimit}${schedule.bookingOpen ? '' : ' · closed'}`
   );
 
-  return `*Consultation Days*\n\n${lines.join('\n\n')}`;
+  return `*Consultation Days*\n\n${lines.join('\n\n')}\n\nSend \`upcoming\` for exact dates this week.`;
+};
+
+const formatUpcoming = async () => {
+  const status = await bookingService.getTodayStatus();
+  const upcoming = status.upcoming || [];
+
+  if (upcoming.length === 0) {
+    return 'No consultation days found in the next two weeks.';
+  }
+
+  const lines = upcoming.slice(0, 6).map((day) => {
+    let windowText = 'Window closed';
+    if (day.windowOpen && day.dayOpen && !day.isFull) {
+      windowText = `Open now · ${day.remaining} left`;
+    } else if (day.windowOpen && day.isFull) {
+      windowText = 'Full';
+    } else if (day.windowOpen && !day.dayOpen) {
+      windowText = 'Day closed';
+    } else {
+      windowText = `Opens ${day.opensOn}`;
+    }
+
+    return `*${day.label}*\n📍 ${day.schedule.location}\n🎫 ${day.bookedCount}/${day.schedule.tokenLimit} · ${windowText}`;
+  });
+
+  return `*Upcoming Consultations*\n\n${lines.join('\n\n')}`;
 };
 
 const findBookingReply = async (argument) => {
@@ -219,7 +256,7 @@ const updateLimitReply = async (argument) => {
   );
   if (!schedule) return messages.NO_SCHEDULE_TODAY;
 
-  return messages.LIMIT_UPDATED(schedule);
+  return messages.LIMIT_UPDATED(schedule, status.consultationDay);
 };
 
 const updateScheduleReply = async (raw) => {

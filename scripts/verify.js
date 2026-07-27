@@ -307,18 +307,30 @@ const runFlowChecks = async () => {
     );
 
     // --- Token limit ------------------------------------------------------
-    const activeCount = await bookingService.getActiveBookingCount();
-    await Schedule.updateOne({ _id: schedule._id }, { tokenLimit: activeCount });
+    // Fill every consultation day whose token window is open right now, so
+    // the system cannot silently skip to Tuesday/Wednesday instead.
+    const snapshotForLimit = await bookingService.getAvailabilitySnapshot();
+    const openWindowDays = (snapshotForLimit.upcoming || []).filter((d) => d.windowOpen);
+    for (const day of openWindowDays) {
+      // eslint-disable-next-line no-await-in-loop
+      const count = await bookingService.getActiveBookingCount(day.date);
+      // eslint-disable-next-line no-await-in-loop
+      await Schedule.updateOne({ day: day.dayName }, { tokenLimit: Math.max(1, count) });
+    }
     const fullFrom = waNumber(TEST_NUMBERS[4]);
-    await send(fullFrom, 'Hi');
-    await send(fullFrom, 'Full Day Visitor');
-    await send(fullFrom, 'Kannur');
-    const fullReply = (await send(fullFrom, TEST_NUMBERS[4])).join('\n');
+    const fullReply = (await send(fullFrom, 'Hi')).join('\n');
     check(
       'Booking is refused when the limit is reached',
-      fullReply.includes('full'),
-      fullReply.slice(0, 60)
+      fullReply.toLowerCase().includes('full'),
+      fullReply.slice(0, 80)
     );
+    for (const day of openWindowDays) {
+      // eslint-disable-next-line no-await-in-loop
+      await Schedule.updateOne(
+        { day: day.dayName },
+        { tokenLimit: day.dayName === today ? 30 : day.schedule.tokenLimit }
+      );
+    }
     await Schedule.updateOne({ _id: schedule._id }, { tokenLimit: 30 });
 
     // --- Consultant on leave ---------------------------------------------
@@ -327,14 +339,11 @@ const runFlowChecks = async () => {
     check('Leave closes booking', leaveStatus.consultantOnLeave && !leaveStatus.bookingOpen);
 
     const leaveFrom = waNumber(TEST_NUMBERS[4]);
-    await send(leaveFrom, 'Hi');
-    await send(leaveFrom, 'Leave Test');
-    await send(leaveFrom, 'Kannur');
-    const leaveReply = (await send(leaveFrom, TEST_NUMBERS[4])).join('\n');
+    const leaveReply = (await send(leaveFrom, 'Hi')).join('\n');
     check(
       'Visitor is told the consultant is unavailable',
       leaveReply.includes('unavailable'),
-      leaveReply.slice(0, 60)
+      leaveReply.slice(0, 80)
     );
     check('Leave reason is shown', leaveReply.includes('Travelling'));
 
@@ -344,29 +353,26 @@ const runFlowChecks = async () => {
     // --- Booking closed ---------------------------------------------------
     await send(waNumber(ADMIN), 'close');
     const closedFrom = waNumber(TEST_NUMBERS[5]);
-    await send(closedFrom, 'Hi');
-    await send(closedFrom, 'Closed Test');
-    await send(closedFrom, 'Kannur');
-    const closedReply = (await send(closedFrom, TEST_NUMBERS[5])).join('\n');
+    const closedReply = (await send(closedFrom, 'Hi')).join('\n');
     check(
       'Booking is refused while closed',
-      closedReply.includes('closed'),
-      closedReply.slice(0, 60)
+      closedReply.toLowerCase().includes('closed'),
+      closedReply.slice(0, 80)
     );
     await send(waNumber(ADMIN), 'open');
 
     // --- Not a consultation day ------------------------------------------
-    await Schedule.updateOne({ _id: schedule._id }, { active: false });
+    await Schedule.updateMany({}, { active: false });
     const offDayFrom = waNumber(TEST_NUMBERS[5]);
-    await send(offDayFrom, 'Hi');
-    await send(offDayFrom, 'Off Day Test');
-    await send(offDayFrom, 'Kannur');
-    const offDayReply = (await send(offDayFrom, TEST_NUMBERS[5])).join('\n');
+    const offDayReply = (await send(offDayFrom, 'Hi')).join('\n');
     check(
-      'Booking is refused on a non-consultation day',
-      offDayReply.includes('Tuesday') && offDayReply.includes('Saturday'),
-      offDayReply.slice(0, 60)
+      'Booking is refused when no consultation days are active',
+      offDayReply.toLowerCase().includes('no consultation') ||
+        offDayReply.includes('Tuesday') ||
+        offDayReply.includes('Saturday'),
+      offDayReply.slice(0, 80)
     );
+    await Schedule.updateMany({}, { active: true });
     await Schedule.updateOne({ _id: schedule._id }, { active: true });
 
     // --- Admin commands ---------------------------------------------------
@@ -376,10 +382,17 @@ const runFlowChecks = async () => {
     const status = (await send(waNumber(ADMIN), 'status')).join('\n');
     check(
       'Status reports every required field',
-      ['Booking:', 'Leave Status:', 'Consultation Day:', 'Location:', 'Booked Count:', 'Remaining Tokens:'].every(
+      ['Visitors can book:', 'Leave Status:', 'Active Consultation:', 'Location:', 'Booked Count:', 'Remaining Tokens:'].every(
         (label) => status.includes(label)
       ),
       status.replace(/\n/g, ' | ').slice(0, 120)
+    );
+
+    const upcoming = (await send(waNumber(ADMIN), 'upcoming')).join('\n');
+    check(
+      'Upcoming lists consultation dates',
+      upcoming.includes('Upcoming Consultations') && upcoming.includes(today),
+      upcoming.slice(0, 80)
     );
 
     const todayList = (await send(waNumber(ADMIN), 'today')).join('\n');

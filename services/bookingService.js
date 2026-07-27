@@ -6,10 +6,9 @@ const {
   getDateKey,
   getTodayDayName,
   calculateReportingTime,
-  findNextConsultationDate,
-  isWithinAdvanceBookingWindow,
+  findUpcomingConsultations,
   formatDisplayDate,
-  addLocalDays,
+  formatConsultationLabel,
 } = require('../helpers/timeHelper');
 const { toLocalNumber } = require('../helpers/phoneHelper');
 const env = require('../config/env');
@@ -31,38 +30,124 @@ const BookingError = {
 
 const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
 
-/**
- * Resolves which consultation day tokens are being issued for.
- * Booking opens from the day before that consultation day.
- */
-const resolveActiveConsultation = async (now = new Date()) => {
-  const next = await findNextConsultationDate(now, async (candidate) =>
-    scheduleService.getTodaySchedule(candidate)
+const loadUpcoming = async (now = new Date()) =>
+  findUpcomingConsultations(
+    now,
+    async (candidate) => scheduleService.getTodaySchedule(candidate),
+    async (candidate) => getActiveBookingCount(candidate)
   );
 
-  if (!next) {
+/**
+ * Picks the best consultation day that can accept a booking right now.
+ * Skips days that are closed for the day or already full, so Monday can
+ * land on Tuesday, and a full Tuesday can move to Wednesday when its
+ * window is open.
+ */
+const pickBookableDay = (upcoming) =>
+  upcoming.find(
+    (day) => day.windowOpen && day.dayOpen && !day.isFull
+  ) || null;
+
+const pickNextOpening = (upcoming) =>
+  upcoming.find((day) => !day.windowOpen && day.dayOpen) || null;
+
+const toActiveMeta = (day, now = new Date()) => {
+  if (!day) {
     return {
       available: false,
       windowOpen: false,
+      bookable: false,
       date: null,
       dayName: null,
       schedule: null,
       displayDate: null,
+      label: null,
       opensOn: null,
+      remaining: 0,
+      bookedCount: 0,
     };
   }
 
-  const windowOpen = isWithinAdvanceBookingWindow(now, next.date);
-  const opensOn = formatDisplayDate(addLocalDays(next.date, -1));
-
   return {
     available: true,
-    windowOpen,
-    date: next.date,
-    dayName: next.dayName,
-    schedule: next.schedule,
-    displayDate: formatDisplayDate(next.date),
-    opensOn,
+    windowOpen: day.windowOpen,
+    bookable: day.windowOpen && day.dayOpen && !day.isFull,
+    date: day.date,
+    dayName: day.dayName,
+    schedule: day.schedule,
+    displayDate: day.displayDate,
+    label: day.label || formatConsultationLabel(day.date, now),
+    opensOn: day.opensOn,
+    remaining: day.remaining,
+    bookedCount: day.bookedCount,
+  };
+};
+
+/**
+ * Resolves which consultation day tokens are being issued for.
+ * Prefers an open, non-full window; otherwise reports the next day and when
+ * its tokens open.
+ */
+const resolveActiveConsultation = async (now = new Date()) => {
+  const upcoming = await loadUpcoming(now);
+  const bookable = pickBookableDay(upcoming);
+
+  if (bookable) {
+    return {
+      ...toActiveMeta(bookable, now),
+      upcoming,
+      nextOpening: pickNextOpening(upcoming.filter((d) => d !== bookable)),
+    };
+  }
+
+  // Prefer a day whose window is already open but full/closed for messaging,
+  // else the soonest consultation day.
+  const openButBlocked = upcoming.find((day) => day.windowOpen) || null;
+  const nearest = openButBlocked || upcoming[0] || null;
+  const nextOpening =
+    pickNextOpening(upcoming) ||
+    upcoming.find((day) => !day.windowOpen) ||
+    null;
+
+  return {
+    ...toActiveMeta(nearest, now),
+    bookable: false,
+    upcoming,
+    nextOpening,
+    blockedReason: !nearest
+      ? 'NONE'
+      : openButBlocked?.isFull
+        ? 'FULL'
+        : openButBlocked && !openButBlocked.dayOpen
+          ? 'DAY_CLOSED'
+          : 'WINDOW_CLOSED',
+  };
+};
+
+/**
+ * Full availability snapshot for welcome / admin — always includes clear
+ * dates and the next opening when booking is not possible yet.
+ */
+const getAvailabilitySnapshot = async (now = new Date()) => {
+  const settings = await settingsService.getSettings();
+  const active = await resolveActiveConsultation(now);
+  const nextOpening = active.nextOpening || null;
+
+  let state = 'BOOKABLE';
+  if (settings.consultantOnLeave) state = 'ON_LEAVE';
+  else if (!settings.bookingOpen) state = 'GLOBALLY_CLOSED';
+  else if (!active.available) state = 'NO_SCHEDULE';
+  else if (active.bookable) state = 'BOOKABLE';
+  else if (active.blockedReason === 'FULL') state = 'FULL';
+  else if (active.blockedReason === 'DAY_CLOSED') state = 'DAY_CLOSED';
+  else state = 'WINDOW_CLOSED';
+
+  return {
+    state,
+    settings,
+    active,
+    nextOpening,
+    upcoming: active.upcoming || [],
   };
 };
 
@@ -74,13 +159,13 @@ const getBookingsForDate = async (date) =>
 
 const getTodayBookings = async (date = new Date()) => {
   const active = await resolveActiveConsultation(date);
-  if (!active.windowOpen) return [];
+  if (!active.windowOpen || !active.date) return [];
   return getBookingsForDate(active.date);
 };
 
 const getAllTodayBookings = async (date = new Date()) => {
   const active = await resolveActiveConsultation(date);
-  if (!active.available) return [];
+  if (!active.available || !active.date) return [];
   return Booking.find({ bookingDate: getBookingDate(active.date) }).sort({
     tokenSequence: 1,
   });
@@ -113,12 +198,15 @@ const findBookingByPhone = async (phone, date = new Date()) => {
   };
 
   const active = await resolveActiveConsultation(date);
-  if (active.windowOpen) {
+  if (active.windowOpen && active.date) {
     const current = await Booking.findOne({
       ...query,
       bookingDate: getBookingDate(active.date),
     });
-    if (current) return current;
+    if (current) {
+      current.displayDate = formatDisplayDate(active.date);
+      return current;
+    }
   }
 
   return Booking.findOne(query).sort({ bookingDate: -1, createdAt: -1 });
@@ -129,7 +217,7 @@ const findBookingByToken = async (token, date = new Date()) => {
   if (!normalized) return null;
 
   const active = await resolveActiveConsultation(date);
-  if (active.available) {
+  if (active.available && active.date) {
     const current = await Booking.findOne({
       tokenNumber: normalized,
       bookingDate: getBookingDate(active.date),
@@ -142,27 +230,38 @@ const findBookingByToken = async (token, date = new Date()) => {
 
 const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' }) => {
   const now = new Date();
-  const active = await resolveActiveConsultation(now);
+  const snapshot = await getAvailabilitySnapshot(now);
+  const { settings, active, nextOpening } = snapshot;
 
-  if (!active.available || !active.schedule) {
-    throw new Error(BookingError.NOT_CONSULTATION_DAY);
-  }
-  if (!active.windowOpen) {
-    const error = new Error(BookingError.BOOKING_WINDOW_CLOSED);
-    error.meta = {
-      consultationDay: active.dayName,
-      displayDate: active.displayDate,
-      opensOn: active.opensOn,
-    };
+  if (settings.consultantOnLeave) {
+    const error = new Error(BookingError.CONSULTANT_ON_LEAVE);
+    error.meta = availabilityMeta(active, nextOpening);
     throw error;
   }
-
-  const settings = await settingsService.getSettings();
-  if (settings.consultantOnLeave) {
-    throw new Error(BookingError.CONSULTANT_ON_LEAVE);
+  if (!settings.bookingOpen) {
+    const error = new Error(BookingError.BOOKING_CLOSED);
+    error.meta = availabilityMeta(active, nextOpening);
+    throw error;
   }
-  if (!settings.bookingOpen || !active.schedule.bookingOpen) {
-    throw new Error(BookingError.BOOKING_CLOSED);
+  if (!active.available || !active.schedule) {
+    const error = new Error(BookingError.NOT_CONSULTATION_DAY);
+    error.meta = availabilityMeta(active, nextOpening);
+    throw error;
+  }
+  if (!active.bookable) {
+    if (active.blockedReason === 'FULL') {
+      const error = new Error(BookingError.TOKEN_LIMIT_REACHED);
+      error.meta = availabilityMeta(active, nextOpening);
+      throw error;
+    }
+    if (active.blockedReason === 'DAY_CLOSED') {
+      const error = new Error(BookingError.BOOKING_CLOSED);
+      error.meta = availabilityMeta(active, nextOpening);
+      throw error;
+    }
+    const error = new Error(BookingError.BOOKING_WINDOW_CLOSED);
+    error.meta = availabilityMeta(active, nextOpening);
+    throw error;
   }
 
   const localPhone = toLocalNumber(phone);
@@ -170,12 +269,18 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
 
   const duplicate = await findDuplicateBooking(localPhone, localWhatsapp, active.date);
   if (duplicate) {
-    throw new Error(BookingError.DUPLICATE_BOOKING);
+    duplicate.displayDate = active.displayDate;
+    const error = new Error(BookingError.DUPLICATE_BOOKING);
+    error.meta = { booking: duplicate };
+    throw error;
   }
 
+  // Re-check capacity under race conditions.
   const activeCount = await getActiveBookingCount(active.date);
   if (activeCount >= active.schedule.tokenLimit) {
-    throw new Error(BookingError.TOKEN_LIMIT_REACHED);
+    const error = new Error(BookingError.TOKEN_LIMIT_REACHED);
+    error.meta = availabilityMeta(active, nextOpening);
+    throw error;
   }
 
   const sequence = await counterService.getNextSequence(tokenCounterKey(active.date));
@@ -201,6 +306,7 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
   });
 
   booking.displayDate = active.displayDate;
+  booking.label = active.label;
 
   logger.info('Booking created', {
     tokenNumber: booking.tokenNumber,
@@ -212,6 +318,24 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
 
   return booking;
 };
+
+const availabilityMeta = (active, nextOpening) => ({
+  consultationDay: active?.dayName || null,
+  displayDate: active?.displayDate || null,
+  label: active?.label || null,
+  opensOn: active?.opensOn || nextOpening?.opensOn || null,
+  location: active?.schedule?.location || nextOpening?.schedule?.location || null,
+  remaining: active?.remaining ?? 0,
+  nextOpening: nextOpening
+    ? {
+        consultationDay: nextOpening.dayName,
+        displayDate: nextOpening.displayDate,
+        label: nextOpening.label,
+        opensOn: nextOpening.opensOn,
+        location: nextOpening.schedule?.location || null,
+      }
+    : null,
+});
 
 const cancelBooking = async (token, date = new Date()) => {
   const booking = await findBookingByToken(token, date);
@@ -231,32 +355,34 @@ const cancelBooking = async (token, date = new Date()) => {
 };
 
 const getTodayStatus = async (date = new Date()) => {
-  const settings = await settingsService.getSettings();
-  const active = await resolveActiveConsultation(date);
-  const bookedCount = active.windowOpen ? await getActiveBookingCount(active.date) : 0;
+  const snapshot = await getAvailabilitySnapshot(date);
+  const { settings, active, nextOpening } = snapshot;
+  const bookedCount =
+    active.windowOpen && active.date ? await getActiveBookingCount(active.date) : 0;
 
   return {
-    bookingOpen:
-      settings.bookingOpen &&
-      active.windowOpen &&
-      Boolean(active.schedule?.bookingOpen),
+    bookingOpen: snapshot.state === 'BOOKABLE',
     consultantOnLeave: settings.consultantOnLeave,
     leaveReason: settings.leaveReason,
-    isConsultationDay: getTodayDayName(date) === active.dayName,
+    isConsultationDay: active.dayName === getTodayDayName(date),
     dayName: getTodayDayName(date),
-    consultationDay: active.available
-      ? `${active.dayName} (${active.displayDate})`
-      : 'None scheduled',
+    todayLabel: formatConsultationLabel(date, date),
+    consultationDay: active.available ? active.label : 'None scheduled',
+    consultationDayName: active.dayName,
     location: active.schedule?.location || 'N/A',
     bookedCount,
     tokenLimit: active.schedule?.tokenLimit || 0,
     remainingTokens: active.schedule
       ? Math.max(0, active.schedule.tokenLimit - bookedCount)
       : 0,
-    windowOpen: active.windowOpen,
-    opensOn: active.opensOn,
+    windowOpen: snapshot.state === 'BOOKABLE',
+    tokenWindowOpen: Boolean(active.windowOpen),
+    opensOn: active.opensOn || nextOpening?.opensOn || null,
     targetDate: active.date,
     schedule: active.schedule,
+    state: snapshot.state,
+    nextOpening,
+    upcoming: snapshot.upcoming,
   };
 };
 
@@ -264,6 +390,7 @@ module.exports = {
   BookingError,
   tokenCounterKey,
   resolveActiveConsultation,
+  getAvailabilitySnapshot,
   getTodayBookings,
   getAllTodayBookings,
   getBookingsForDate,

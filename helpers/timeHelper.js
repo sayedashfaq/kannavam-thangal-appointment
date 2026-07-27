@@ -55,6 +55,22 @@ const formatDisplayDate = (date = new Date()) => {
   return `${weekday}, ${day} ${monthName} ${year}`;
 };
 
+/** "today" | "tomorrow" | null — relative to consultation timezone. */
+const getRelativeDayLabel = (targetDate, now = new Date()) => {
+  const todayKey = getDateKey(now);
+  const targetKey = getDateKey(targetDate);
+  if (targetKey === todayKey) return 'today';
+  if (targetKey === getDateKey(addLocalDays(now, 1))) return 'tomorrow';
+  return null;
+};
+
+/** e.g. "Tuesday, 28 Jul 2026 (tomorrow)" */
+const formatConsultationLabel = (date = new Date(), now = new Date()) => {
+  const display = formatDisplayDate(date);
+  const relative = getRelativeDayLabel(date, now);
+  return relative ? `${display} (${relative})` : display;
+};
+
 const findNextConsultationDate = async (fromDate, getScheduleForDate) => {
   for (let offset = 0; offset < 14; offset += 1) {
     const candidate = addLocalDays(fromDate, offset);
@@ -69,6 +85,42 @@ const findNextConsultationDate = async (fromDate, getScheduleForDate) => {
     }
   }
   return null;
+};
+
+/**
+ * Walks the next two weeks and returns every active consultation day with
+ * window / remaining-token metadata for clear visitor and admin messaging.
+ */
+const findUpcomingConsultations = async (fromDate, getScheduleForDate, getBookedCount) => {
+  const upcoming = [];
+
+  for (let offset = 0; offset < 14; offset += 1) {
+    const candidate = addLocalDays(fromDate, offset);
+    // eslint-disable-next-line no-await-in-loop
+    const schedule = await getScheduleForDate(candidate);
+    if (!schedule) continue;
+
+    const windowOpen = isWithinAdvanceBookingWindow(fromDate, candidate);
+    // eslint-disable-next-line no-await-in-loop
+    const bookedCount = getBookedCount ? await getBookedCount(candidate) : 0;
+    const remaining = Math.max(0, (schedule.tokenLimit || 0) - bookedCount);
+
+    upcoming.push({
+      date: candidate,
+      dayName: getTodayDayName(candidate),
+      schedule,
+      displayDate: formatDisplayDate(candidate),
+      label: formatConsultationLabel(candidate, fromDate),
+      opensOn: formatDisplayDate(addLocalDays(candidate, -1)),
+      windowOpen,
+      bookedCount,
+      remaining,
+      dayOpen: Boolean(schedule.bookingOpen),
+      isFull: remaining <= 0,
+    });
+  }
+
+  return upcoming;
 };
 
 // Booking for a consultation day opens at local midnight on the day before.
@@ -134,7 +186,10 @@ module.exports = {
   getDateKey,
   addLocalDays,
   formatDisplayDate,
+  getRelativeDayLabel,
+  formatConsultationLabel,
   findNextConsultationDate,
+  findUpcomingConsultations,
   isWithinAdvanceBookingWindow,
   parseTimeToMinutes,
   isValidTimeString,

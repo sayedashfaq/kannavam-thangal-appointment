@@ -2,6 +2,7 @@ const { CONVERSATION_STEPS } = require('../constants');
 const messages = require('../constants/messages');
 const { isGreeting, sanitizeName, sanitizePlace } = require('../helpers/validationHelper');
 const { validatePhone } = require('../helpers/phoneHelper');
+const { getDateKey } = require('../helpers/timeHelper');
 const conversationService = require('./conversationService');
 const bookingService = require('./bookingService');
 const settingsService = require('./settingsService');
@@ -58,9 +59,9 @@ const handleVisitorMessage = async (from, text) => {
   const conversation = await conversationService.getConversation(from);
   const step = conversation.currentStep;
 
-  // A greeting always restarts the flow, except while the visitor is part way
-  // through answering, where the text is treated as their answer.
-  if (isGreeting(message) && !ACTIVE_STEPS.includes(step)) {
+  // A clear greeting always restarts, even mid-flow, so visitors never get
+  // stuck if they send Hi again after a pause or a confusing reply.
+  if (isGreeting(message)) {
     await startBookingFlow(from);
     return;
   }
@@ -88,9 +89,21 @@ const handleVisitorMessage = async (from, text) => {
 };
 
 const startBookingFlow = async (from) => {
-  const settings = await settingsService.getSettings();
-  await conversationService.setStep(from, CONVERSATION_STEPS.WAIT_NAME, {});
-  await reply(from, messages.WELCOME(settings.welcomeMessage));
+  const snapshot = await bookingService.getAvailabilitySnapshot();
+
+  // Tell visitors immediately whether they can book — with the exact day —
+  // instead of collecting details and failing at the end.
+  if (snapshot.state !== 'BOOKABLE') {
+    await conversationService.resetConversation(from);
+    await reply(from, messages.AVAILABILITY_UNAVAILABLE(snapshot));
+    return;
+  }
+
+  const settings = snapshot.settings;
+  await conversationService.setStep(from, CONVERSATION_STEPS.WAIT_NAME, {
+    targetDateKey: snapshot.active.date ? getDateKey(snapshot.active.date) : null,
+  });
+  await reply(from, messages.WELCOME(settings.welcomeMessage, snapshot));
 };
 
 const handleNameInput = async (from, name) => {
@@ -165,41 +178,45 @@ const notifyAdmin = async (booking) => {
 
 const handleBookingFailure = async (from, phone, error) => {
   await conversationService.resetConversation(from);
+  const meta = error.meta || {};
 
   switch (error.message) {
     case BookingError.BOOKING_CLOSED:
-      await reply(from, messages.BOOKING_CLOSED);
+      await reply(from, messages.BOOKING_CLOSED(meta));
       return;
 
     case BookingError.CONSULTANT_ON_LEAVE: {
       const settings = await settingsService.getSettings();
-      await reply(from, messages.CONSULTANT_ON_LEAVE(settings.leaveReason));
+      await reply(from, messages.CONSULTANT_ON_LEAVE(settings.leaveReason, meta));
       return;
     }
 
     case BookingError.NOT_CONSULTATION_DAY:
-      await reply(from, messages.NOT_CONSULTATION_DAY);
+      await reply(from, messages.NOT_CONSULTATION_DAY(meta));
       return;
 
     case BookingError.BOOKING_WINDOW_CLOSED:
       await reply(
         from,
         messages.BOOKING_WINDOW_CLOSED(
-          error.meta || {
-            consultationDay: 'the next consultation day',
-            displayDate: 'soon',
-            opensOn: 'the day before',
-          }
+          meta.label || meta.opensOn
+            ? meta
+            : {
+                consultationDay: 'the next consultation day',
+                displayDate: 'soon',
+                opensOn: 'the day before',
+              }
         )
       );
       return;
 
     case BookingError.TOKEN_LIMIT_REACHED:
-      await reply(from, messages.TOKEN_LIMIT_REACHED);
+      await reply(from, messages.TOKEN_LIMIT_REACHED(meta));
       return;
 
     case BookingError.DUPLICATE_BOOKING: {
-      const existing = await bookingService.findBookingByPhone(phone);
+      const existing =
+        meta.booking || (await bookingService.findBookingByPhone(phone));
       await reply(
         from,
         existing ? messages.DUPLICATE_BOOKING(existing) : messages.GENERIC_ERROR
