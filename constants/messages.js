@@ -191,11 +191,11 @@ JazakAllahu Khairan.`,
   ADMIN_MENU: `📋 *${CONSULTANT} Appointment Manager*
 
 1️⃣ Pause all booking — \`close\`
-2️⃣ Resume all booking — \`open\`
+2️⃣ Open all booking — \`open\`
 3️⃣ Status — \`status\`
 4️⃣ Bookings — \`today\` / \`list\` / \`list tuesday\`
 5️⃣ Day leave — \`leave tuesday\`
-6️⃣ Clear day leave — \`resume tuesday\`
+6️⃣ Open a day again — \`open tuesday\`
 7️⃣ Upcoming — \`upcoming\`
 8️⃣ Schedules — \`schedules\`
 9️⃣ Token limit — \`limit 25\`
@@ -205,12 +205,14 @@ JazakAllahu Khairan.`,
 
 *Pause everything temporarily*
 \`close\` — Stop all new bookings now
-\`open\` — Allow bookings again
+\`open\` — Allow all bookings again
 
 *Day-specific leave* (other days stay bookable)
 \`leave tuesday\` — Next Tuesday on leave + notify visitors
 \`leave saturday emergency\` — Next Saturday on leave with reason
-\`resume tuesday\` — Clear leave for that Tuesday
+\`open tuesday\` — Change of mind: open that Tuesday again
+\`open saturday\` — Open that Saturday again
+\`resume tuesday\` — Same as \`open tuesday\`
 
 *Lists & status*
 \`status\` — Who can book right now
@@ -232,13 +234,13 @@ JazakAllahu Khairan.`,
   LEAVE_USAGE:
     'Specify the consultation day.\n\nExamples:\n`leave tuesday`\n`leave saturday emergency`\n`leave next wednesday Travelling`\n\nOther days stay open for booking.\nUse `close` if you need to pause *everything*.',
   RESUME_USAGE:
-    'Specify the day to clear leave.\n\nExample: `resume tuesday`\n\nUse `open` if all booking was paused with `close`.',
+    'Specify the day to open again.\n\nExamples:\n`open tuesday`\n`open saturday`\n`resume wednesday`\n\nUse plain `open` if all booking was paused with `close`.',
   LEAVE_SET_DAY: ({ label, reason, notifiedCount, cancelledCount }) =>
     `Leave set for *${label}*.${
       reason ? `\nReason: ${reason}` : ''
-    }\n\nNew bookings for that day are blocked.\nOther consultation days stay available.\n\nCancelled bookings: ${cancelledCount}\nVisitors notified: ${notifiedCount}`,
-  LEAVE_ALREADY_SET: (label) => `*${label}* is already marked on leave.`,
-  LEAVE_CLEARED: (label) => `Leave cleared for *${label}*.\nVisitors can book that day again.`,
+    }\n\nNew bookings for that day are blocked.\nOther consultation days stay available.\n\nCancelled bookings: ${cancelledCount}\nVisitors notified: ${notifiedCount}\n\nChanged your mind later? Send \`open ${label.split(',')[0].toLowerCase().split(' ')[0]}\`.`,
+  LEAVE_ALREADY_SET: (label) => `*${label}* is already marked on leave.\nSend \`open\` with that day name to clear it.`,
+  LEAVE_CLEARED: (label) => `*${label}* is open again.\nVisitors can book that day now.`,
   LEAVE_NOT_SET: (label) => `*${label}* is not on leave.`,
   LEAVE_NO_DAY:
     'No matching consultation day found in the next 3 weeks.\nUsual days: Tuesday, Wednesday, Saturday.',

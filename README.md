@@ -125,7 +125,8 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | `open` | Allow bookings again after `close` |
 | `leave tuesday` | Put **next Tuesday** on leave (Wednesday/Saturday stay open) |
 | `leave saturday emergency` | Day leave with reason; cancels that day's bookings and WhatsApps every visitor |
-| `resume tuesday` | Clear leave for that Tuesday |
+| `open tuesday` / `resume tuesday` | Change of mind — open that Tuesday again |
+| `open saturday` | Open that Saturday again |
 | `status` | Active consultation + day leaves |
 | `today` / `list` | Bookings for the active open day |
 | `list tuesday` | Bookings for next Tuesday |

@@ -17,7 +17,6 @@ const isAdmin = (phone) => Boolean(env.adminPhone) && phonesMatch(phone, env.adm
 const SIMPLE_COMMANDS = [
   'menu',
   'help',
-  'open',
   'close',
   'status',
   'today',
@@ -25,7 +24,16 @@ const SIMPLE_COMMANDS = [
   'upcoming',
 ];
 
-const PREFIX_COMMANDS = ['find', 'cancel', 'limit', 'schedule', 'leave', 'resume', 'list'];
+const PREFIX_COMMANDS = [
+  'find',
+  'cancel',
+  'limit',
+  'schedule',
+  'leave',
+  'resume',
+  'list',
+  'open',
+];
 
 // True when the admin clearly meant to issue a command, so a typo gets a
 // helpful reply instead of silently starting a visitor booking flow.
@@ -56,6 +64,8 @@ const handleAdminCommand = async (phone, text) => {
       return messages.ADMIN_HELP;
 
     case 'open':
+      // `open` = resume everything; `open tuesday` = clear that day's leave.
+      if (argument) return clearLeaveReply(argument);
       await settingsService.updateSettings({
         bookingOpen: true,
         consultantOnLeave: false,
@@ -71,6 +81,7 @@ const handleAdminCommand = async (phone, text) => {
       return setLeaveReply(argument);
 
     case 'resume':
+      // Same as `open tuesday` — kept for people who already learned resume.
       return clearLeaveReply(argument);
 
     case 'status':
