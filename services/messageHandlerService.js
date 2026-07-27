@@ -16,6 +16,7 @@ const ACTIVE_STEPS = [
   CONVERSATION_STEPS.WAIT_NAME,
   CONVERSATION_STEPS.WAIT_PLACE,
   CONVERSATION_STEPS.WAIT_PHONE,
+  CONVERSATION_STEPS.WAIT_MEMBERS,
 ];
 
 const reply = async (to, text) => {
@@ -77,6 +78,10 @@ const handleVisitorMessage = async (from, text) => {
 
     case CONVERSATION_STEPS.WAIT_PHONE:
       await handlePhoneInput(from, message, conversation);
+      break;
+
+    case CONVERSATION_STEPS.WAIT_MEMBERS:
+      await handleMembersInput(from, message, conversation);
       break;
 
     case CONVERSATION_STEPS.COMPLETED:
@@ -150,12 +155,39 @@ const handlePhoneInput = async (from, phoneInput, conversation) => {
     return;
   }
 
+  const settings = await settingsService.getSettings();
+  const maxMembers = settings.maxMembersPerToken || 10;
+
+  await conversationService.mergeStep(from, CONVERSATION_STEPS.WAIT_MEMBERS, {
+    phone,
+  });
+  await reply(from, messages.ASK_MEMBERS(maxMembers));
+};
+
+const handleMembersInput = async (from, membersInput, conversation) => {
+  const settings = await settingsService.getSettings();
+  const maxMembers = settings.maxMembersPerToken || 10;
+  const members = Number.parseInt(String(membersInput).trim(), 10);
+
+  if (!Number.isInteger(members) || members < 1 || members > maxMembers) {
+    await reply(from, messages.INVALID_MEMBERS(maxMembers));
+    return;
+  }
+
+  const { visitorName, place, phone } = conversation.tempData || {};
+
+  if (!visitorName || !place || !phone) {
+    await startBookingFlow(from);
+    return;
+  }
+
   try {
     const booking = await bookingService.createBooking({
       visitorName,
       place,
       phone,
       whatsappNumber: from,
+      memberCount: members,
     });
 
     await conversationService.setStep(from, CONVERSATION_STEPS.COMPLETED, {});
@@ -216,6 +248,10 @@ const handleBookingFailure = async (from, phone, error) => {
 
     case BookingError.TOKEN_LIMIT_REACHED:
       await reply(from, messages.TOKEN_LIMIT_REACHED(meta));
+      return;
+
+    case BookingError.INVALID_MEMBERS:
+      await reply(from, messages.INVALID_MEMBERS(meta.maxMembers || 10));
       return;
 
     case BookingError.DUPLICATE_BOOKING: {

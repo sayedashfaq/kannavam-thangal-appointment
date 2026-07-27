@@ -151,31 +151,23 @@ const formatMinutesToTime = (totalMinutes) => {
   return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`;
 };
 
-const calculateReportingTime = (schedule, tokenIndex, dynamicEnabled = true) => {
+const calculateReportingTime = (schedule, tokenIndex) => {
+  // Fixed 10-minute slots so each token has a clear reporting time.
+  const SLOT_MINUTES = 10;
   const morningStart = parseTimeToMinutes(schedule.morningStart);
-
-  if (!dynamicEnabled) {
-    return `${formatMinutesToTime(morningStart)} (Morning Session)`;
-  }
-
   const morningEnd = parseTimeToMinutes(schedule.morningEnd);
   const afternoonStart = parseTimeToMinutes(schedule.afternoonStart);
   const afternoonEnd = parseTimeToMinutes(schedule.afternoonEnd);
 
   const morningDuration = Math.max(0, morningEnd - morningStart);
-  const afternoonDuration = Math.max(0, afternoonEnd - afternoonStart);
-  const totalDuration = morningDuration + afternoonDuration;
-  const tokenLimit = Math.max(1, schedule.tokenLimit || 1);
-
-  const slotMinutes = Math.max(5, Math.floor(totalDuration / tokenLimit));
-  const tokenOffset = Math.max(0, tokenIndex - 1) * slotMinutes;
+  const tokenOffset = Math.max(0, tokenIndex - 1) * SLOT_MINUTES;
 
   if (tokenOffset < morningDuration) {
     return formatMinutesToTime(morningStart + tokenOffset);
   }
 
   const afternoonOffset = tokenOffset - morningDuration;
-  const latestSlot = Math.max(afternoonStart, afternoonEnd - 5);
+  const latestSlot = Math.max(afternoonStart, afternoonEnd - SLOT_MINUTES);
   return formatMinutesToTime(Math.min(afternoonStart + afternoonOffset, latestSlot));
 };
 

@@ -50,6 +50,13 @@ const bookingSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // Family size covered by this single token (including the visitor).
+    memberCount: {
+      type: Number,
+      required: true,
+      default: 1,
+      min: 1,
+    },
     status: {
       type: String,
       enum: Object.values(BOOKING_STATUS),

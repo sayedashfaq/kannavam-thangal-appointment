@@ -22,6 +22,13 @@ const settingsSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    // Max people allowed under one token (family visit).
+    maxMembersPerToken: {
+      type: Number,
+      default: 10,
+      min: 1,
+      max: 50,
+    },
     lastWebhookVerify: {
       type: mongoose.Schema.Types.Mixed,
       default: null,

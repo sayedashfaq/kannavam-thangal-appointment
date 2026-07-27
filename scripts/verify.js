@@ -117,9 +117,11 @@ const runUnitChecks = () => {
     tokenLimit: 30,
   };
 
-  const first = calculateReportingTime(schedule, 1, true);
-  const last = calculateReportingTime(schedule, 30, true);
+  const first = calculateReportingTime(schedule, 1);
+  const second = calculateReportingTime(schedule, 2);
+  const last = calculateReportingTime(schedule, 30);
   check('First token reports at 10:00 AM', first === '10:00 AM', first);
+  check('Second token is 10 minutes later', second === '10:10 AM', second);
 
   const lastMinutes = parseClockTime(last);
   check(
@@ -130,7 +132,7 @@ const runUnitChecks = () => {
 
   let allInsideHours = true;
   for (let index = 1; index <= schedule.tokenLimit; index += 1) {
-    const minutes = parseClockTime(calculateReportingTime(schedule, index, true));
+    const minutes = parseClockTime(calculateReportingTime(schedule, index));
     const inMorning =
       minutes >= parseTimeToMinutes('10:00') && minutes <= parseTimeToMinutes('13:00');
     const inAfternoon =
@@ -138,22 +140,21 @@ const runUnitChecks = () => {
     if (!inMorning && !inAfternoon) allInsideHours = false;
   }
   check('Every reporting time falls inside consultation hours', allInsideHours);
-
-  const fixed = calculateReportingTime(schedule, 12, false);
-  check('Static mode returns the session start', fixed.includes('10:00 AM'), fixed);
 };
 
-const bookVisitor = async (local, name, place) => {
+const bookVisitor = async (local, name, place, members = 2) => {
   const from = waNumber(local);
   const welcome = await send(from, 'Hi');
   const placePrompt = await send(from, name);
   const phonePrompt = await send(from, place);
-  const confirmation = await send(from, local);
+  const membersPrompt = await send(from, local);
+  const confirmation = await send(from, String(members));
 
   return {
     welcome: welcome.join('\n'),
     placePrompt: placePrompt.join('\n'),
     phonePrompt: phonePrompt.join('\n'),
+    membersPrompt: membersPrompt.join('\n'),
     confirmation: lastTo(from) || confirmation.join('\n'),
     adminNotice: lastTo(ADMIN),
   };
@@ -221,7 +222,17 @@ const runFlowChecks = async () => {
     check('Greeting returns the welcome message', first.welcome.includes('Full Name'));
     check('Name prompt asks for the place', first.placePrompt.includes('place'));
     check('Place prompt asks for the mobile number', first.phonePrompt.includes('mobile number'));
+    check(
+      'Phone prompt asks for family members',
+      first.membersPrompt.toLowerCase().includes('members'),
+      first.membersPrompt.slice(0, 60)
+    );
     check('Visitor receives a confirmation', first.confirmation.includes('Token Number'));
+    check(
+      'Confirmation includes member count',
+      first.confirmation.includes('Members'),
+      first.confirmation.slice(0, 80)
+    );
     check(
       'Confirmation names the consultant',
       first.confirmation.includes('Kannavam Thangal')
@@ -270,7 +281,8 @@ const runFlowChecks = async () => {
     await send(duplicateFrom, 'Hi');
     await send(duplicateFrom, 'Muhammed Ali');
     await send(duplicateFrom, 'Kannur');
-    const duplicateReply = (await send(duplicateFrom, TEST_NUMBERS[0])).join('\n');
+    await send(duplicateFrom, TEST_NUMBERS[0]);
+    const duplicateReply = (await send(duplicateFrom, '2')).join('\n');
     check(
       'Duplicate booking is blocked',
       duplicateReply.includes('already have an appointment'),
@@ -278,7 +290,7 @@ const runFlowChecks = async () => {
     );
     check(
       'Duplicate did not create a second row',
-      (await Booking.countDocuments({ phone: TEST_NUMBERS[0] })) === 1
+      (await Booking.countDocuments({ phone: TEST_NUMBERS[0], status: 'BOOKED' })) === 1
     );
 
     // --- Invalid mobile number -------------------------------------------
@@ -289,9 +301,15 @@ const runFlowChecks = async () => {
     const invalidReply = (await send(invalidFrom, '12345')).join('\n');
     check('Invalid mobile number is rejected', invalidReply.includes('valid'), invalidReply.slice(0, 60));
 
-    const retryReply = (await send(invalidFrom, TEST_NUMBERS[2])).join('\n');
+    const membersAsk = (await send(invalidFrom, TEST_NUMBERS[2])).join('\n');
     check(
       'Flow continues after a corrected number',
+      membersAsk.toLowerCase().includes('members'),
+      membersAsk.slice(0, 60)
+    );
+    const retryReply = (await send(invalidFrom, '3')).join('\n');
+    check(
+      'Members step completes the booking',
       retryReply.includes('Token Number'),
       retryReply.slice(0, 60)
     );

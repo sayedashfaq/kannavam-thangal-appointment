@@ -33,6 +33,7 @@ const PREFIX_COMMANDS = [
   'resume',
   'list',
   'open',
+  'members',
 ];
 
 // True when the admin clearly meant to issue a command, so a typo gets a
@@ -107,6 +108,9 @@ const handleAdminCommand = async (phone, text) => {
 
     case 'limit':
       return updateLimitReply(argument);
+
+    case 'members':
+      return updateMembersReply(argument);
 
     case 'schedule':
       return updateScheduleReply(raw);
@@ -203,7 +207,7 @@ const formatBookingList = (label, location, bookings) => {
 
   const lines = bookings.map(
     (booking) =>
-      `${booking.tokenNumber} · ${booking.reportingTime}\n${booking.visitorName} — ${booking.place}\n${booking.phone}`
+      `${booking.tokenNumber} · ${booking.reportingTime} · ${booking.memberCount || 1} members\n${booking.visitorName} — ${booking.place}\n${booking.phone}`
   );
 
   return `*Bookings for ${label} (${bookings.length})*\n${location || ''}\n\n${lines.join('\n\n')}`;
@@ -341,6 +345,21 @@ const updateLimitReply = async (argument) => {
   if (!schedule) return messages.NO_SCHEDULE_TODAY;
 
   return messages.LIMIT_UPDATED(schedule, status.consultationDay);
+};
+
+const updateMembersReply = async (argument) => {
+  if (!argument) {
+    const settings = await settingsService.getSettings();
+    return messages.MEMBERS_STATUS(settings.maxMembersPerToken || 10);
+  }
+
+  const max = Number.parseInt(argument, 10);
+  if (!Number.isInteger(max) || max < 1 || max > 50) {
+    return messages.INVALID_MEMBERS_LIMIT;
+  }
+
+  await settingsService.updateSettings({ maxMembersPerToken: max });
+  return messages.MEMBERS_UPDATED(max);
 };
 
 const updateScheduleReply = async (raw) => {

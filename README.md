@@ -109,10 +109,10 @@ VERIFY_MEMORY=1 npm run verify
 
 1. Visitor sends **Hi**, **Hello** or **Assalamu Alaikum**
 2. System immediately shows whether booking is open, with the **exact consultation date** (e.g. *Tuesday, 28 Jul 2026 (tomorrow)*), venue and tokens left — or explains when the next day opens
-3. If booking is open, system asks for full name → place → mobile number
-4. Visitor receives the token number, dated consultation, location and reporting time; the admin is notified
+3. If booking is open, system asks for full name → place → mobile number → **family members**
+4. Visitor receives the token number, dated consultation, member count, location and reporting time (10 minutes per token); the admin is notified
 
-Tokens open from the **day before** each consultation day (Asia/Kolkata). If the nearest day is full, the system moves to the next day whose token window is already open.
+Tokens open from the **day before** each consultation day (Asia/Kolkata). If the nearest day is on leave or full, the system moves visitors to the next available day (including early-opening the next day when leave blocks the current window).
 
 ## Admin Commands
 
@@ -133,7 +133,8 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | `upcoming` | Next days with dates, leave flags, and token windows |
 | `find <phone>` | Booking details for a visitor |
 | `cancel <token>` | Cancel a booking, e.g. `cancel T005` |
-| `limit <number>` | Update token limit for the active consultation day |
+| `members` | Show max family members allowed on one token |
+| `members 5` | Set max family members per token (visitor is asked while booking) |
 | `schedules` | Show configured weekdays |
 | `schedule <day> "<location>" <mStart> <mEnd> <aStart> <aEnd> <limit>` | Update a day |
 | `help` | Full command list |

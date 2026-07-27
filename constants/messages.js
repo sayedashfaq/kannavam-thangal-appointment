@@ -14,19 +14,23 @@ module.exports = {
 
     const day = availability?.active;
     if (day?.label) {
-      return `Assalamu Alaikum ورحمة الله وبركاته
+      return `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Welcome to the Appointment Service of *${CONSULTANT}*.
 
 You are booking for:
 *${day.label}*
 📍 ${day.schedule?.location || 'Consultation venue'}
-🎫 ${day.remaining} of ${day.schedule?.tokenLimit || 0} tokens left
+🎫 ${day.remaining} of ${day.schedule?.tokenLimit || 0} tokens left${
+        day.earlyOpenAfterLeave
+          ? '\n\n_(An earlier consultation day is on leave, so this next day is open for booking now.)_'
+          : ''
+      }
 
 Kindly provide your Full Name.`;
     }
 
-    return `Assalamu Alaikum ورحمة الله وبركاته
+    return `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Welcome to the Appointment Service of *${CONSULTANT}*.
 
@@ -37,12 +41,18 @@ Kindly provide your Full Name.`;
 
   ASK_PHONE: 'Please enter your mobile number.',
 
+  ASK_MEMBERS: (maxMembers = 10) =>
+    `How many family members will come with this token (including you)?\n\nReply with a number from *1* to *${maxMembers}*.`,
+
   INVALID_NAME: 'Please enter a valid full name.',
 
   INVALID_PLACE: 'Please enter a valid place.',
 
   INVALID_PHONE:
     'That does not look like a valid mobile number.\n\nPlease enter a 10-digit mobile number (example: 9876543210).',
+
+  INVALID_MEMBERS: (maxMembers = 10) =>
+    `Please enter a valid number of members from *1* to *${maxMembers}*.`,
 
   CONSULTANT_ON_LEAVE: (reason, meta = {}) =>
     reason
@@ -64,7 +74,7 @@ Kindly provide your Full Name.`;
     }\n\nPlease send *Hi* again when booking reopens.`,
 
   LEAVE_NOTICE_TO_VISITOR: ({ visitorName, tokenNumber, label, reason }) =>
-    `Assalamu Alaikum ورحمة الله وبركاته
+    `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
 
 Dear ${visitorName || 'Visitor'},
 
@@ -148,6 +158,7 @@ Please message again then — no need to wait on the consultation day itself.`;
 
 *Token Number:* ${booking.tokenNumber}
 *Reporting Time:* ${booking.reportingTime}
+*Members:* ${booking.memberCount || 1}
 *Location:* ${booking.consultationLocation}`,
 
   ALREADY_BOOKED_HINT:
@@ -167,6 +178,9 @@ ${booking.tokenNumber}
 *Consultation:*
 ${booking.label || `${booking.consultationDay}${booking.displayDate ? `\n${booking.displayDate}` : ''}`}
 
+*Members:*
+${booking.memberCount || 1}
+
 *Location:*
 ${booking.consultationLocation}
 
@@ -184,6 +198,7 @@ JazakAllahu Khairan.`,
 *Visitor Name:* ${booking.visitorName}
 *Place:* ${booking.place}
 *Phone:* ${booking.phone}
+*Members:* ${booking.memberCount || 1}
 *Consultation:* ${booking.label || `${booking.consultationDay}${booking.displayDate ? ` (${booking.displayDate})` : ''}`}
 *Location:* ${booking.consultationLocation}
 *Reporting Time:* ${booking.reportingTime}`,
@@ -197,7 +212,7 @@ JazakAllahu Khairan.`,
 5️⃣ Day leave — \`leave tuesday\`
 6️⃣ Open a day again — \`open tuesday\`
 7️⃣ Upcoming — \`upcoming\`
-8️⃣ Schedules — \`schedules\`
+8️⃣ Family size limit — \`members 5\`
 9️⃣ Token limit — \`limit 25\`
 🔟 Help — \`help\``,
 
@@ -207,7 +222,7 @@ JazakAllahu Khairan.`,
 \`close\` — Stop all new bookings now
 \`open\` — Allow all bookings again
 
-*Day-specific leave* (other days stay bookable)
+*Day-specific leave* (next day stays bookable automatically)
 \`leave tuesday\` — Next Tuesday on leave + notify visitors
 \`leave saturday emergency\` — Next Saturday on leave with reason
 \`open tuesday\` — Change of mind: open that Tuesday again
@@ -224,6 +239,8 @@ JazakAllahu Khairan.`,
 \`find <phone>\` — Find a visitor booking
 \`cancel <token>\` — Cancel one booking
 \`limit 25\` — Token limit for the active day
+\`members\` — Show max family members per token
+\`members 5\` — Set max family members allowed on one token
 \`help\` — This help
 
 *Update a schedule*
@@ -238,7 +255,7 @@ JazakAllahu Khairan.`,
   LEAVE_SET_DAY: ({ label, reason, notifiedCount, cancelledCount }) =>
     `Leave set for *${label}*.${
       reason ? `\nReason: ${reason}` : ''
-    }\n\nNew bookings for that day are blocked.\nOther consultation days stay available.\n\nCancelled bookings: ${cancelledCount}\nVisitors notified: ${notifiedCount}\n\nChanged your mind later? Send \`open ${label.split(',')[0].toLowerCase().split(' ')[0]}\`.`,
+    }\n\nNew bookings for that day are blocked.\nVisitors can book the *next* consultation day automatically.\n\nCancelled bookings: ${cancelledCount}\nVisitors notified: ${notifiedCount}\n\nChanged your mind later? Send \`open ${label.split(',')[0].toLowerCase().split(' ')[0]}\`.`,
   LEAVE_ALREADY_SET: (label) => `*${label}* is already marked on leave.\nSend \`open\` with that day name to clear it.`,
   LEAVE_CLEARED: (label) =>
     `*${label}* is open again.\nVisitors can book that day now.\nTokens restart from *T001* with morning reporting times.`,
@@ -263,5 +280,10 @@ JazakAllahu Khairan.`,
     'Invalid format. Usage:\n`schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30`',
   LIMIT_UPDATED: (schedule, label) =>
     `Token limit for *${label || schedule.day}* updated to ${schedule.tokenLimit}.`,
+  MEMBERS_STATUS: (max) =>
+    `Max family members per token: *${max}*\n\nVisitors are asked this while booking.\nChange with \`members 5\`.`,
+  MEMBERS_UPDATED: (max) =>
+    `Max family members per token set to *${max}*.`,
+  INVALID_MEMBERS_LIMIT: 'Invalid members limit. Usage: `members 5` (1–50)',
   NO_BOOKINGS_TODAY: 'No bookings for the active consultation day.',
 };

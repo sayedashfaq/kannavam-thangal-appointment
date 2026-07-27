@@ -9,9 +9,9 @@ const {
   findUpcomingConsultations,
   formatDisplayDate,
   formatConsultationLabel,
+  addLocalDays,
 } = require('../helpers/timeHelper');
 const { toLocalNumber } = require('../helpers/phoneHelper');
-const env = require('../config/env');
 const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
 const counterService = require('./counterService');
@@ -28,6 +28,7 @@ const BookingError = {
   DUPLICATE_BOOKING: 'DUPLICATE_BOOKING',
   BOOKING_NOT_FOUND: 'BOOKING_NOT_FOUND',
   ALREADY_CANCELLED: 'ALREADY_CANCELLED',
+  INVALID_MEMBERS: 'INVALID_MEMBERS',
 };
 
 const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
@@ -53,19 +54,40 @@ const loadUpcoming = async (now = new Date()) => {
 };
 
 /**
- * Picks the best consultation day that can accept a booking right now.
- * Skips leave days, closed days, and full days so Tuesday leave still
- * lets Wednesday fill when its window is open.
+ * If Tuesday is on leave, Wednesday (or the next open day) becomes bookable
+ * during the same window Tuesday would have used — visitors are not stuck.
  */
-const pickBookableDay = (upcoming) =>
-  upcoming.find(
-    (day) => day.windowOpen && day.dayOpen && !day.isFull && !day.onLeave
-  ) || null;
+const isEarlyOpenAfterLeave = (day, upcoming, now = new Date()) => {
+  const today = getBookingDate(now).getTime();
+  const dayEnd = getBookingDate(day.date).getTime();
+
+  return upcoming.some((prior) => {
+    if (prior.date.getTime() >= day.date.getTime()) return false;
+    if (!prior.onLeave) return false;
+    const windowStart = getBookingDate(addLocalDays(prior.date, -1)).getTime();
+    return today >= windowStart && today <= dayEnd;
+  });
+};
+
+/**
+ * Picks the best consultation day that can accept a booking right now.
+ * Skips leave / closed / full days, and early-opens the next day when a
+ * prior consultation day is on leave.
+ */
+const pickBookableDay = (upcoming, now = new Date()) => {
+  for (const day of upcoming) {
+    if (day.onLeave || !day.dayOpen || day.isFull) continue;
+    if (day.windowOpen || isEarlyOpenAfterLeave(day, upcoming, now)) {
+      return day;
+    }
+  }
+  return null;
+};
 
 const pickNextOpening = (upcoming) =>
   upcoming.find((day) => !day.windowOpen && day.dayOpen && !day.onLeave) || null;
 
-const toActiveMeta = (day, now = new Date()) => {
+const toActiveMeta = (day, now = new Date(), upcoming = []) => {
   if (!day) {
     return {
       available: false,
@@ -82,10 +104,13 @@ const toActiveMeta = (day, now = new Date()) => {
     };
   }
 
+  const earlyOpen = isEarlyOpenAfterLeave(day, upcoming, now);
+  const accepting = (day.windowOpen || earlyOpen) && day.dayOpen && !day.isFull && !day.onLeave;
+
   return {
     available: true,
-    windowOpen: day.windowOpen,
-    bookable: day.windowOpen && day.dayOpen && !day.isFull,
+    windowOpen: Boolean(day.windowOpen || earlyOpen),
+    bookable: accepting,
     date: day.date,
     dayName: day.dayName,
     schedule: day.schedule,
@@ -94,6 +119,7 @@ const toActiveMeta = (day, now = new Date()) => {
     opensOn: day.opensOn,
     remaining: day.remaining,
     bookedCount: day.bookedCount,
+    earlyOpenAfterLeave: earlyOpen && !day.windowOpen,
   };
 };
 
@@ -104,11 +130,11 @@ const toActiveMeta = (day, now = new Date()) => {
  */
 const resolveActiveConsultation = async (now = new Date()) => {
   const upcoming = await loadUpcoming(now);
-  const bookable = pickBookableDay(upcoming);
+  const bookable = pickBookableDay(upcoming, now);
 
   if (bookable) {
     return {
-      ...toActiveMeta(bookable, now),
+      ...toActiveMeta(bookable, now, upcoming),
       upcoming,
       nextOpening: pickNextOpening(upcoming.filter((d) => d !== bookable)),
     };
@@ -120,23 +146,25 @@ const resolveActiveConsultation = async (now = new Date()) => {
   const nearest = openButBlocked || upcoming[0] || null;
   const nextOpening =
     pickNextOpening(upcoming) ||
-    upcoming.find((day) => !day.windowOpen) ||
+    upcoming.find((day) => !day.onLeave && day.dayOpen) ||
     null;
 
   return {
-    ...toActiveMeta(nearest, now),
+    ...toActiveMeta(nearest, now, upcoming),
     bookable: false,
     upcoming,
     nextOpening,
     blockedReason: !nearest
       ? 'NONE'
-      : openButBlocked?.onLeave
+      : openButBlocked?.onLeave && !nextOpening
         ? 'DAY_ON_LEAVE'
-        : openButBlocked?.isFull
-          ? 'FULL'
-          : openButBlocked && !openButBlocked.dayOpen
-            ? 'DAY_CLOSED'
-            : 'WINDOW_CLOSED',
+        : openButBlocked?.onLeave && nextOpening
+          ? 'WINDOW_CLOSED'
+          : openButBlocked?.isFull
+            ? 'FULL'
+            : openButBlocked && !openButBlocked.dayOpen
+              ? 'DAY_CLOSED'
+              : 'WINDOW_CLOSED',
     leaveReason: openButBlocked?.leaveReason || nearest?.leaveReason || '',
   };
 };
@@ -253,10 +281,24 @@ const findBookingByToken = async (token, date = new Date()) => {
   return Booking.findOne({ tokenNumber: normalized }).sort({ bookingDate: -1 });
 };
 
-const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' }) => {
+const createBooking = async ({
+  visitorName,
+  place,
+  phone,
+  whatsappNumber = '',
+  memberCount = 1,
+}) => {
   const now = new Date();
   const snapshot = await getAvailabilitySnapshot(now);
   const { settings, active, nextOpening } = snapshot;
+
+  const maxMembers = Math.max(1, settings.maxMembersPerToken || 10);
+  const members = Number.parseInt(memberCount, 10);
+  if (!Number.isInteger(members) || members < 1 || members > maxMembers) {
+    const error = new Error(BookingError.INVALID_MEMBERS);
+    error.meta = { maxMembers };
+    throw error;
+  }
 
   if (!settings.bookingOpen) {
     const error = new Error(BookingError.BOOKING_CLOSED);
@@ -322,11 +364,7 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
 
   const sequence = await counterService.getNextSequence(tokenCounterKey(active.date));
   const tokenNumber = generateTokenNumber(sequence);
-  const reportingTime = calculateReportingTime(
-    active.schedule,
-    sequence,
-    env.dynamicReportingTime
-  );
+  const reportingTime = calculateReportingTime(active.schedule, sequence);
 
   const booking = await Booking.create({
     visitorName,
@@ -339,6 +377,7 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
     consultationDay: active.dayName,
     consultationLocation: active.schedule.location,
     reportingTime,
+    memberCount: members,
     status: BOOKING_STATUS.BOOKED,
   });
 
@@ -349,6 +388,7 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
     tokenNumber: booking.tokenNumber,
     visitorName: booking.visitorName,
     phone: booking.phone,
+    memberCount: booking.memberCount,
     consultationDay: booking.consultationDay,
     bookingDate: getDateKey(active.date),
   });
