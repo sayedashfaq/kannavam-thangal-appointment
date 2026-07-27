@@ -6,3 +6,5 @@ logs/*.log
 *.log
 .DS_Store
 npm-debug.log*
+
+body_*.txt
