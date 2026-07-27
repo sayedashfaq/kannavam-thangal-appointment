@@ -1,5 +1,9 @@
 const CONSULTANT = 'Kannavam Thangal';
 
+// Greeting used on messages sent from the office/system to visitors.
+const SALAM = `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+Assalamu Alaikum`;
+
 const nextHint = (meta = {}) => {
   const next = meta.nextOpening;
   if (!next?.label) return '';
@@ -9,12 +13,14 @@ const nextHint = (meta = {}) => {
 };
 
 module.exports = {
+  SALAM,
+
   WELCOME: (customMessage, availability) => {
     if (customMessage) return customMessage;
 
     const day = availability?.active;
     if (day?.label) {
-      return `.السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+      return `${SALAM}
 
 Welcome to the Appointment Service of *${CONSULTANT}*.
 
@@ -30,7 +36,7 @@ You are booking for:
 Kindly provide your Full Name.`;
     }
 
-    return `.السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+    return `${SALAM}
 
 Welcome to the Appointment Service of *${CONSULTANT}*.
 
@@ -74,7 +80,7 @@ Kindly provide your Full Name.`;
     }\n\nPlease send *Hi* again when booking reopens.`,
 
   LEAVE_NOTICE_TO_VISITOR: ({ visitorName, tokenNumber, label, reason }) =>
-    `.السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+    `${SALAM}
 
 Dear ${visitorName || 'Visitor'},
 
@@ -83,6 +89,28 @@ ${reason ? `\nReason: ${reason}\n` : ''}
 Your appointment *${tokenNumber}* for that day has been cancelled.
 
 Please send *Hi* to book the next available consultation day.
+
+JazakAllahu Khairan.`,
+
+  VENUE_CHANGE_NOTICE_TO_VISITOR: ({ booking, venue }) =>
+    `${SALAM}
+
+Dear ${booking.visitorName || 'Visitor'},
+
+Your consultation venue has been updated.
+
+*Token Number:* ${booking.tokenNumber}
+*Consultation:* ${booking.label || booking.consultationDay}${
+      booking.displayDate ? ` (${booking.displayDate})` : ''
+    }
+*Reporting Time:* ${booking.reportingTime}
+*Members:* ${booking.memberCount || 1}
+*New Location:* ${venue.name || booking.consultationLocation}
+
+Please arrive *30 minutes before* your reporting time.
+
+Open map:
+${venue.mapsUrl || 'Ask the office for directions.'}
 
 JazakAllahu Khairan.`,
 
@@ -170,7 +198,7 @@ Send *Hi* anytime to see these details again.`,
     'Sorry, something went wrong while processing your request. Please try again in a few minutes.',
 
   BOOKING_CONFIRMATION: (booking) =>
-    `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
+    `${SALAM}
 
 Your appointment with *${CONSULTANT}* has been confirmed.
 
@@ -269,10 +297,10 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
   BOOKING_CLOSED_ADMIN: 'All booking is paused temporarily.\nVisitors cannot take new tokens until you send `open`.',
   LOCATION_USAGE: (venuesHelp) =>
     `Change consultation venue.\n\nExamples:\n\`change adhur\`\n\`change bandichal\`\n\`change adhur tuesday\`\n\`change bandichal saturday\`\n\nVenues:\n${venuesHelp}`,
-  LOCATION_UPDATED: ({ day, venue }) =>
-    `Venue updated.\n\n*Day:* ${day}\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}`,
-  LOCATION_UPDATED_MULTI: ({ days, venue }) =>
-    `Venue updated for *${days.join(', ')}*.\n\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}`,
+  LOCATION_UPDATED: ({ day, venue, updatedCount = 0, notifiedCount = 0 }) =>
+    `Venue updated.\n\n*Day:* ${day}\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}\n\nBookings updated: ${updatedCount}\nVisitors notified: ${notifiedCount}`,
+  LOCATION_UPDATED_MULTI: ({ days, venue, updatedCount = 0, notifiedCount = 0 }) =>
+    `Venue updated for *${days.join(', ')}*.\n\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}\n\nBookings updated: ${updatedCount}\nVisitors notified: ${notifiedCount}`,
   LEAVE_USAGE:
     'Specify the consultation day.\n\nExamples:\n`leave tuesday`\n`leave saturday emergency`\n`leave next wednesday Travelling`\n\nOther days stay open for booking.\nUse `close` if you need to pause *everything*.',
   RESUME_USAGE:

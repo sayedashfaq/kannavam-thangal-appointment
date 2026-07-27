@@ -397,7 +397,8 @@ const changeLocationReply = async (argument) => {
     if (!isValidWeekday(tokens[1])) return messages.INVALID_DAY;
     const day = capitalizeDay(tokens[1]);
     const schedule = await scheduleService.updateLocationForDay(day, venue.name);
-    return messages.LOCATION_UPDATED({ day: schedule.day, venue });
+    const notify = await bookingService.updateVenueAndNotifyBookings(day, venue);
+    return messages.LOCATION_UPDATED({ day: schedule.day, venue, ...notify });
   }
 
   const status = await bookingService.getTodayStatus();
@@ -407,7 +408,11 @@ const changeLocationReply = async (argument) => {
     status.schedule.day,
     venue.name
   );
-  return messages.LOCATION_UPDATED({ day: schedule.day, venue });
+  const notify = await bookingService.updateVenueAndNotifyBookings(
+    schedule.day,
+    venue
+  );
+  return messages.LOCATION_UPDATED({ day: schedule.day, venue, ...notify });
 };
 
 const updateScheduleReply = async (raw) => {

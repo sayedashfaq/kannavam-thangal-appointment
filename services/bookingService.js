@@ -16,6 +16,8 @@ const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
 const counterService = require('./counterService');
 const leaveService = require('./leaveService');
+const whatsappService = require('./whatsappService');
+const messages = require('../constants/messages');
 const logger = require('../utils/logger');
 
 const BookingError = {
@@ -512,6 +514,58 @@ const getBookingsForDayName = async (dayName, fromDate = new Date()) => {
   };
 };
 
+/**
+ * After admin changes a day's venue: update every upcoming BOOKED visit for
+ * that weekday and WhatsApp each visitor with their token + new map pin.
+ */
+const updateVenueAndNotifyBookings = async (dayName, venue, now = new Date()) => {
+  const day = String(dayName || '').trim();
+  const locationName = venue?.name || '';
+  if (!day || !locationName) {
+    return { updatedCount: 0, notifiedCount: 0 };
+  }
+
+  const bookings = await Booking.find({
+    status: BOOKING_STATUS.BOOKED,
+    consultationDay: day,
+    bookingDate: { $gte: getBookingDate(now) },
+  }).sort({ bookingDate: 1, tokenSequence: 1 });
+
+  let updatedCount = 0;
+  let notifiedCount = 0;
+
+  for (const booking of bookings) {
+    booking.consultationLocation = locationName;
+    // eslint-disable-next-line no-await-in-loop
+    await booking.save();
+    updatedCount += 1;
+
+    const to = booking.whatsappNumber || booking.phone || '';
+    if (!to) continue;
+
+    booking.displayDate = formatDisplayDate(booking.bookingDate);
+    booking.label = formatConsultationLabel(booking.bookingDate, now);
+
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await whatsappService.sendTextMessage(
+        to,
+        messages.VENUE_CHANGE_NOTICE_TO_VISITOR({ booking, venue }),
+        { previewUrl: true }
+      );
+      notifiedCount += 1;
+    } catch (error) {
+      logger.error('Failed to notify visitor about venue change', {
+        tokenNumber: booking.tokenNumber,
+        to,
+        error: error.message,
+      });
+    }
+  }
+
+  return { updatedCount, notifiedCount };
+};
+
 module.exports = {
   BookingError,
   tokenCounterKey,
@@ -529,4 +583,5 @@ module.exports = {
   cancelBooking,
   getTodayStatus,
   getBookingsForDayName,
+  updateVenueAndNotifyBookings,
 };

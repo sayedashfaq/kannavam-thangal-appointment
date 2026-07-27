@@ -476,6 +476,35 @@ const runFlowChecks = async () => {
       firstBookingAfterLeave?.reportingTime
     );
 
+    // --- Venue change notifies booked visitors ---------------------------
+    const venueChangeReply = (await send(waNumber(ADMIN), `change bandichal ${today}`)).join(
+      '\n'
+    );
+    const bookingAfterVenue = await Booking.findById(firstBookingAfterLeave._id);
+    const venueNotice = lastTo(TEST_NUMBERS[0]);
+    check(
+      'Admin venue change confirms update',
+      venueChangeReply.includes('Venue updated') &&
+        venueChangeReply.toLowerCase().includes('bandichal') &&
+        venueChangeReply.includes('Visitors notified'),
+      venueChangeReply.slice(0, 120)
+    );
+    check(
+      'Booked visitor is notified of venue change',
+      venueNotice.includes('Assalamu Alaikum') &&
+        venueNotice.includes(firstBookingAfterLeave.tokenNumber) &&
+        venueNotice.toLowerCase().includes('bandichal') &&
+        venueNotice.includes('maps.app.goo.gl'),
+      venueNotice.slice(0, 120)
+    );
+    check(
+      'Booking location is updated after venue change',
+      String(bookingAfterVenue?.consultationLocation || '')
+        .toLowerCase()
+        .includes('bandichal'),
+      bookingAfterVenue?.consultationLocation
+    );
+
     // --- Booking closed (global pause) ------------------------------------
     await send(waNumber(ADMIN), 'close');
     const closedFrom = waNumber(TEST_NUMBERS[5]);
