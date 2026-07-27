@@ -10,8 +10,7 @@ const VENUES = {
     key: 'bandichal',
     aliases: ['bandichal', 'bendichal'],
     name: 'Jalaliya Manzil Bandichal',
-    // Replace when you have the exact pin for Bandichal.
-    mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Jalaliya+Manzil+Bandichal',
+    mapsUrl: 'https://maps.app.goo.gl/mxAD97MXMmeUoAe67',
   },
 };
 
