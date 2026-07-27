@@ -53,10 +53,28 @@ Kindly provide your Full Name.`;
           meta.label ? `\n\nNext consultation was: *${meta.label}*` : ''
         }\n\nPlease send *Hi* again after bookings resume.`,
 
+  DAY_ON_LEAVE: (meta = {}) =>
+    `*${CONSULTANT}* is on leave for *${meta.label || 'that consultation day'}*.${
+      meta.reason ? `\n\nReason: ${meta.reason}` : ''
+    }${nextHint(meta)}\n\nSend *Hi* to book the next available day.`,
+
   BOOKING_CLOSED: (meta = {}) =>
-    `Booking is currently closed.${
-      meta.label ? `\n\nActive consultation: *${meta.label}*` : ''
+    `Booking is temporarily paused by the office.${
+      meta.label ? `\n\nLast active consultation: *${meta.label}*` : ''
     }\n\nPlease send *Hi* again when booking reopens.`,
+
+  LEAVE_NOTICE_TO_VISITOR: ({ visitorName, tokenNumber, label, reason }) =>
+    `Assalamu Alaikum ورحمة الله وبركاته
+
+Dear ${visitorName || 'Visitor'},
+
+*${CONSULTANT}* has taken leave for *${label}*.
+${reason ? `\nReason: ${reason}\n` : ''}
+Your appointment *${tokenNumber}* for that day has been cancelled.
+
+Please send *Hi* to book the next available consultation day.
+
+JazakAllahu Khairan.`,
 
   NOT_CONSULTATION_DAY: (meta = {}) =>
     `No consultation days are scheduled in the next two weeks.${
@@ -104,6 +122,12 @@ Please message again then — no need to wait on the consultation day itself.`;
 
     if (state === 'ON_LEAVE') {
       return module.exports.CONSULTANT_ON_LEAVE(settings.leaveReason, meta);
+    }
+    if (state === 'DAY_ON_LEAVE') {
+      return module.exports.DAY_ON_LEAVE({
+        ...meta,
+        reason: active?.leaveReason || '',
+      });
     }
     if (state === 'GLOBALLY_CLOSED' || state === 'DAY_CLOSED') {
       return module.exports.BOOKING_CLOSED(meta);
@@ -166,40 +190,58 @@ JazakAllahu Khairan.`,
 
   ADMIN_MENU: `📋 *${CONSULTANT} Appointment Manager*
 
-1️⃣ Open Booking — \`open\`
-2️⃣ Close Booking — \`close\`
+1️⃣ Pause all booking — \`close\`
+2️⃣ Resume all booking — \`open\`
 3️⃣ Status — \`status\`
-4️⃣ Bookings — \`today\` / \`list\`
-5️⃣ Leave — \`leave\`
-6️⃣ Resume — \`resume\`
-7️⃣ Upcoming days — \`upcoming\`
-8️⃣ Update Schedule — \`schedule\`
-9️⃣ Token Limit — \`limit 25\`
+4️⃣ Bookings — \`today\` / \`list\` / \`list tuesday\`
+5️⃣ Day leave — \`leave tuesday\`
+6️⃣ Clear day leave — \`resume tuesday\`
+7️⃣ Upcoming — \`upcoming\`
+8️⃣ Schedules — \`schedules\`
+9️⃣ Token limit — \`limit 25\`
 🔟 Help — \`help\``,
 
   ADMIN_HELP: `*Available Commands*
 
-\`menu\` — Show the menu
-\`open\` — Open booking
-\`close\` — Close booking
-\`leave [reason]\` — Mark consultant unavailable and close booking
-\`resume\` — Resume booking
-\`status\` — Active consultation status
-\`today\` / \`list\` — Bookings for the active consultation day
-\`upcoming\` — Next consultation days with dates and token windows
-\`schedules\` — Configured weekdays
-\`find <phone>\` — Booking details for a visitor
-\`cancel <token>\` — Cancel a booking (example: \`cancel T005\`)
-\`limit <number>\` — Update token limit for the active consultation day
-\`help\` — Show this help
+*Pause everything temporarily*
+\`close\` — Stop all new bookings now
+\`open\` — Allow bookings again
+
+*Day-specific leave* (other days stay bookable)
+\`leave tuesday\` — Next Tuesday on leave + notify visitors
+\`leave saturday emergency\` — Next Saturday on leave with reason
+\`resume tuesday\` — Clear leave for that Tuesday
+
+*Lists & status*
+\`status\` — Who can book right now
+\`upcoming\` — Next days with dates / leave / tokens
+\`today\` — Bookings for the active open day
+\`list\` — Same as today
+\`list tuesday\` — Bookings for next Tuesday
+\`schedules\` — Weekly schedule setup
+\`find <phone>\` — Find a visitor booking
+\`cancel <token>\` — Cancel one booking
+\`limit 25\` — Token limit for the active day
+\`help\` — This help
 
 *Update a schedule*
 \`schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30\``,
 
-  BOOKING_OPENED: 'Booking is now open.',
-  BOOKING_CLOSED_ADMIN: 'Booking closed.',
-  LEAVE_SET: 'Consultant marked unavailable.\nBookings closed for visitors.',
-  RESUME_SET: 'Bookings resumed.',
+  BOOKING_OPENED: 'All booking is open again.',
+  BOOKING_CLOSED_ADMIN: 'All booking is paused temporarily.\nVisitors cannot take new tokens until you send `open`.',
+  LEAVE_USAGE:
+    'Specify the consultation day.\n\nExamples:\n`leave tuesday`\n`leave saturday emergency`\n`leave next wednesday Travelling`\n\nOther days stay open for booking.\nUse `close` if you need to pause *everything*.',
+  RESUME_USAGE:
+    'Specify the day to clear leave.\n\nExample: `resume tuesday`\n\nUse `open` if all booking was paused with `close`.',
+  LEAVE_SET_DAY: ({ label, reason, notifiedCount, cancelledCount }) =>
+    `Leave set for *${label}*.${
+      reason ? `\nReason: ${reason}` : ''
+    }\n\nNew bookings for that day are blocked.\nOther consultation days stay available.\n\nCancelled bookings: ${cancelledCount}\nVisitors notified: ${notifiedCount}`,
+  LEAVE_ALREADY_SET: (label) => `*${label}* is already marked on leave.`,
+  LEAVE_CLEARED: (label) => `Leave cleared for *${label}*.\nVisitors can book that day again.`,
+  LEAVE_NOT_SET: (label) => `*${label}* is not on leave.`,
+  LEAVE_NO_DAY:
+    'No matching consultation day found in the next 3 weeks.\nUsual days: Tuesday, Wednesday, Saturday.',
   UNKNOWN_COMMAND: 'Unknown command. Type `menu` to see the available commands.',
   BOOKING_NOT_FOUND: 'No booking found.',
   BOOKING_CANCELLED: (booking) =>

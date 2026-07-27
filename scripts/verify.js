@@ -29,6 +29,7 @@ const processedMessages = require('../utils/processedMessages');
 const Booking = require('../models/Booking');
 const Conversation = require('../models/Conversation');
 const Schedule = require('../models/Schedule');
+const DayLeave = require('../models/DayLeave');
 
 const { validatePhone, phonesMatch, toLocalNumber } = require('../helpers/phoneHelper');
 const { normalizeToken, generateTokenNumber } = require('../helpers/tokenHelper');
@@ -47,6 +48,7 @@ const TEST_NUMBERS = [
   '9000000004',
   '9000000005',
   '9000000006',
+  '9000000007',
 ];
 const waNumber = (local) => `91${local}`;
 const ADMIN = toLocalNumber(env.adminPhone);
@@ -333,30 +335,79 @@ const runFlowChecks = async () => {
     }
     await Schedule.updateOne({ _id: schedule._id }, { tokenLimit: 30 });
 
-    // --- Consultant on leave ---------------------------------------------
-    await send(waNumber(ADMIN), 'leave Travelling');
-    const leaveStatus = await settingsService.getSettings();
-    check('Leave closes booking', leaveStatus.consultantOnLeave && !leaveStatus.bookingOpen);
+    // --- Day-specific leave ----------------------------------------------
+    const leaveTargetDay = today;
+    const beforeLeave = await bookVisitor(TEST_NUMBERS[6], 'Leave Notify', 'Adhur');
+    check(
+      'Leave-notify visitor was booked first',
+      beforeLeave.confirmation.includes('Token Number')
+    );
+    const leaveBooking = await Booking.findOne({ phone: TEST_NUMBERS[6] });
+
+    const leaveAdminReply = (
+      await send(waNumber(ADMIN), `leave ${leaveTargetDay} Travelling`)
+    ).join('\n');
+    check(
+      'Day leave is confirmed to admin',
+      leaveAdminReply.toLowerCase().includes('leave set') ||
+        leaveAdminReply.includes(leaveTargetDay),
+      leaveAdminReply.slice(0, 100)
+    );
+    check(
+      'Day leave notifies and cancels existing bookings',
+      /Cancelled bookings:\s*[1-9]/.test(leaveAdminReply) &&
+        /Visitors notified:\s*[1-9]/.test(leaveAdminReply),
+      leaveAdminReply.match(/Cancelled bookings:.*|Visitors notified:.*/g)?.join(' | ') ||
+        leaveAdminReply.slice(0, 120)
+    );
+
+    const cancelledLeaveBooking = await Booking.findById(leaveBooking._id);
+    check(
+      'Leave cancels the visitor booking',
+      cancelledLeaveBooking?.status === 'CANCELLED'
+    );
 
     const leaveFrom = waNumber(TEST_NUMBERS[4]);
     const leaveReply = (await send(leaveFrom, 'Hi')).join('\n');
+    // Today is on leave — visitor should either be offered another day or
+    // be told this day is on leave with a next-opening hint.
     check(
-      'Visitor is told the consultant is unavailable',
-      leaveReply.includes('unavailable'),
-      leaveReply.slice(0, 80)
+      'Visitor is guided away from a leave day',
+      leaveReply.toLowerCase().includes('leave') ||
+        leaveReply.includes('Full Name') ||
+        leaveReply.includes('Wednesday') ||
+        leaveReply.includes('Saturday') ||
+        leaveReply.includes('Tuesday'),
+      leaveReply.slice(0, 100)
     );
-    check('Leave reason is shown', leaveReply.includes('Travelling'));
 
-    const resumeReply = (await send(waNumber(ADMIN), 'resume')).join('\n');
-    check('Resume reopens booking', resumeReply.includes('resumed'));
+    const resumeReply = (await send(waNumber(ADMIN), `resume ${leaveTargetDay}`)).join('\n');
+    check(
+      'Resume clears day leave',
+      resumeReply.toLowerCase().includes('leave cleared') ||
+        resumeReply.toLowerCase().includes('cleared'),
+      resumeReply.slice(0, 80)
+    );
 
-    // --- Booking closed ---------------------------------------------------
+    // Re-book after leave cancelled earlier tokens, so later list checks have data.
+    const afterResume = await bookVisitor(TEST_NUMBERS[0], 'Muhammed Ali', 'Kannur');
+    const firstBookingAfterLeave = await Booking.findOne({
+      phone: TEST_NUMBERS[0],
+      status: 'BOOKED',
+    });
+    check(
+      'Visitor can book again after leave is cleared',
+      afterResume.confirmation.includes('Token Number') && Boolean(firstBookingAfterLeave)
+    );
+
+    // --- Booking closed (global pause) ------------------------------------
     await send(waNumber(ADMIN), 'close');
     const closedFrom = waNumber(TEST_NUMBERS[5]);
     const closedReply = (await send(closedFrom, 'Hi')).join('\n');
     check(
       'Booking is refused while closed',
-      closedReply.toLowerCase().includes('closed'),
+      closedReply.toLowerCase().includes('paused') ||
+        closedReply.toLowerCase().includes('closed'),
       closedReply.slice(0, 80)
     );
     await send(waNumber(ADMIN), 'open');
@@ -382,7 +433,7 @@ const runFlowChecks = async () => {
     const status = (await send(waNumber(ADMIN), 'status')).join('\n');
     check(
       'Status reports every required field',
-      ['Visitors can book:', 'Leave Status:', 'Active Consultation:', 'Location:', 'Booked Count:', 'Remaining Tokens:'].every(
+      ['All booking:', 'Active Consultation:', 'Location:', 'Booked Count:', 'Remaining Tokens:', 'Day leaves:'].every(
         (label) => status.includes(label)
       ),
       status.replace(/\n/g, ' | ').slice(0, 120)
@@ -398,14 +449,14 @@ const runFlowChecks = async () => {
     const todayList = (await send(waNumber(ADMIN), 'today')).join('\n');
     check(
       "Today's bookings include an issued token",
-      todayList.includes(firstBooking.tokenNumber),
+      todayList.includes(firstBookingAfterLeave.tokenNumber),
       todayList.slice(0, 60)
     );
 
     const findReply = (await send(waNumber(ADMIN), `find ${TEST_NUMBERS[0]}`)).join('\n');
     check(
       'Find returns the visitor details',
-      findReply.includes('Muhammed Ali') && findReply.includes(firstBooking.tokenNumber)
+      findReply.includes('Muhammed Ali') && findReply.includes(firstBookingAfterLeave.tokenNumber)
     );
 
     const findMissing = (await send(waNumber(ADMIN), 'find 9999999999')).join('\n');
@@ -452,6 +503,7 @@ const runFlowChecks = async () => {
     await Conversation.deleteMany({
       phone: { $in: [...TEST_NUMBERS.map(waNumber), waNumber(ADMIN), ADMIN] },
     });
+    await DayLeave.deleteMany({});
 
     if (createdTempSchedule) {
       await Schedule.deleteOne({ _id: schedule._id });

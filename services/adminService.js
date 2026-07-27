@@ -2,11 +2,12 @@ const messages = require('../constants/messages');
 const env = require('../config/env');
 const { phonesMatch, toLocalNumber } = require('../helpers/phoneHelper');
 const { capitalizeDay, isValidWeekday } = require('../helpers/validationHelper');
-const { isValidTimeString, parseTimeToMinutes } = require('../helpers/timeHelper');
+const { isValidTimeString, parseTimeToMinutes, formatDisplayDate } = require('../helpers/timeHelper');
 const { isValidTokenFormat, normalizeToken } = require('../helpers/tokenHelper');
 const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
 const bookingService = require('./bookingService');
+const leaveService = require('./leaveService');
 const logger = require('../utils/logger');
 
 const { BookingError } = bookingService;
@@ -18,16 +19,13 @@ const SIMPLE_COMMANDS = [
   'help',
   'open',
   'close',
-  'leave',
-  'resume',
   'status',
   'today',
-  'list',
   'schedules',
   'upcoming',
 ];
 
-const PREFIX_COMMANDS = ['find', 'cancel', 'limit', 'schedule', 'leave'];
+const PREFIX_COMMANDS = ['find', 'cancel', 'limit', 'schedule', 'leave', 'resume', 'list'];
 
 // True when the admin clearly meant to issue a command, so a typo gets a
 // helpful reply instead of silently starting a visitor booking flow.
@@ -58,7 +56,11 @@ const handleAdminCommand = async (phone, text) => {
       return messages.ADMIN_HELP;
 
     case 'open':
-      await settingsService.updateSettings({ bookingOpen: true });
+      await settingsService.updateSettings({
+        bookingOpen: true,
+        consultantOnLeave: false,
+        leaveReason: '',
+      });
       return messages.BOOKING_OPENED;
 
     case 'close':
@@ -66,27 +68,19 @@ const handleAdminCommand = async (phone, text) => {
       return messages.BOOKING_CLOSED_ADMIN;
 
     case 'leave':
-      await settingsService.updateSettings({
-        consultantOnLeave: true,
-        bookingOpen: false,
-        leaveReason: argument,
-      });
-      return messages.LEAVE_SET;
+      return setLeaveReply(argument);
 
     case 'resume':
-      await settingsService.updateSettings({
-        consultantOnLeave: false,
-        bookingOpen: true,
-        leaveReason: '',
-      });
-      return messages.RESUME_SET;
+      return clearLeaveReply(argument);
 
     case 'status':
       return formatStatus();
 
     case 'today':
-    case 'list':
       return formatTodayBookings();
+
+    case 'list':
+      return argument ? formatDayBookings(argument) : formatTodayBookings();
 
     case 'schedules':
       return formatSchedules();
@@ -111,32 +105,97 @@ const handleAdminCommand = async (phone, text) => {
   }
 };
 
+const setLeaveReply = async (argument) => {
+  const parsed = leaveService.parseLeaveArgument(argument);
+  if (!parsed.ok) return messages.LEAVE_USAGE;
+
+  const result = await leaveService.setDayLeave(parsed.dayName, parsed.reason);
+  if (!result.ok) {
+    if (result.error === 'ALREADY_ON_LEAVE') {
+      return messages.LEAVE_ALREADY_SET(result.target.label);
+    }
+    return messages.LEAVE_NO_DAY;
+  }
+
+  return messages.LEAVE_SET_DAY({
+    label: result.target.label,
+    reason: parsed.reason,
+    notifiedCount: result.notifiedCount,
+    cancelledCount: result.cancelledCount,
+  });
+};
+
+const clearLeaveReply = async (argument) => {
+  if (!argument) return messages.RESUME_USAGE;
+
+  const parsed = leaveService.parseLeaveArgument(argument);
+  if (!parsed.ok) return messages.RESUME_USAGE;
+
+  const result = await leaveService.clearDayLeave(parsed.dayName);
+  if (!result.ok) {
+    if (result.error === 'NOT_ON_LEAVE') {
+      return messages.LEAVE_NOT_SET(result.target.label);
+    }
+    return messages.LEAVE_NO_DAY;
+  }
+
+  return messages.LEAVE_CLEARED(result.target.label);
+};
+
 const formatStatus = async () => {
   const status = await bookingService.getTodayStatus();
-  const leaveLine = status.consultantOnLeave
-    ? `On Leave 🚫${status.leaveReason ? ` (${status.leaveReason})` : ''}`
-    : 'Available ✅';
+  const settings = await settingsService.getSettings();
+
+  const leaveLines =
+    status.activeLeaves?.length > 0
+      ? status.activeLeaves
+          .map(
+            (leave) =>
+              `• ${leave.dayName}, ${formatDisplayDate(leave.leaveDate)}${
+                leave.reason ? ` (${leave.reason})` : ''
+              }`
+          )
+          .join('\n')
+      : 'None';
 
   const windowLine = status.bookingOpen
     ? 'Open — visitors can book now ✅'
-    : status.nextOpening?.opensOn
-      ? `Opens ${status.nextOpening.opensOn} for ${status.nextOpening.label}`
-      : status.opensOn
-        ? `Opens ${status.opensOn}`
-        : 'Closed';
+    : !settings.bookingOpen
+      ? 'All booking paused (`open` to resume)'
+      : status.nextOpening?.opensOn
+        ? `Opens ${status.nextOpening.opensOn} for ${status.nextOpening.label}`
+        : status.opensOn
+          ? `Opens ${status.opensOn}`
+          : 'Closed';
 
   return `*Booking Status*
 
 *Today:* ${status.todayLabel || status.dayName}
-*Visitors can book:* ${status.bookingOpen ? 'Yes ✅' : 'No ❌'}
+*All booking:* ${settings.bookingOpen ? 'Open ✅' : 'Paused ❌'}
+*Visitors can book now:* ${status.bookingOpen ? 'Yes ✅' : 'No ❌'}
 *Token Window:* ${windowLine}
-*Leave Status:* ${leaveLine}
 *Active Consultation:* ${status.consultationDay}
 *Location:* ${status.location}
 *Booked Count:* ${status.bookedCount}
 *Remaining Tokens:* ${status.remainingTokens} of ${status.tokenLimit}
 
-Tip: send \`upcoming\` for the next consultation dates.`;
+*Day leaves:*
+${leaveLines}
+
+Tip: \`leave tuesday\` · \`list saturday\` · \`upcoming\``;
+};
+
+const formatBookingList = (label, location, bookings) => {
+  if (bookings.length === 0) {
+    return `No bookings yet for *${label}*.`;
+  }
+
+  const lines = bookings.map(
+    (booking) =>
+      `${booking.tokenNumber} · ${booking.reportingTime}\n${booking.visitorName} — ${booking.place}\n${booking.phone}`
+  );
+
+  return `*Bookings for ${label} (${bookings.length})*\n${location || ''}\n\n${lines.join('\n\n')}`;
 };
 
 const formatTodayBookings = async () => {
@@ -151,17 +210,29 @@ const formatTodayBookings = async () => {
         : messages.NO_BOOKINGS_TODAY;
   }
 
-  if (bookings.length === 0) {
-    return `No bookings yet for *${status.consultationDay}*.`;
-  }
-
-  const lines = bookings.map(
-    (booking) =>
-      `${booking.tokenNumber} · ${booking.reportingTime}\n${booking.visitorName} — ${booking.place}\n${booking.phone}`
+  return formatBookingList(
+    status.consultationDay,
+    bookings[0]?.consultationLocation || status.location,
+    bookings
   );
+};
 
-  const header = `*Bookings for ${status.consultationDay} (${bookings.length})*\n${bookings[0].consultationLocation}`;
-  return `${header}\n\n${lines.join('\n\n')}`;
+const formatDayBookings = async (argument) => {
+  const dayName = leaveService.parseDayName(argument.split(/\s+/)[0]);
+  if (!dayName) return messages.INVALID_DAY;
+
+  const result = await bookingService.getBookingsForDayName(dayName);
+  if (!result.ok) return messages.LEAVE_NO_DAY;
+
+  const leaveNote = result.leave
+    ? `\n🚫 On leave${result.leave.reason ? `: ${result.leave.reason}` : ''}`
+    : '';
+
+  return `${formatBookingList(
+    result.target.label,
+    result.target.schedule.location,
+    result.bookings
+  )}${leaveNote}`;
 };
 
 const formatSchedules = async () => {
@@ -187,7 +258,9 @@ const formatUpcoming = async () => {
 
   const lines = upcoming.slice(0, 6).map((day) => {
     let windowText = 'Window closed';
-    if (day.windowOpen && day.dayOpen && !day.isFull) {
+    if (day.onLeave) {
+      windowText = `On leave${day.leaveReason ? `: ${day.leaveReason}` : ''}`;
+    } else if (day.windowOpen && day.dayOpen && !day.isFull) {
       windowText = `Open now · ${day.remaining} left`;
     } else if (day.windowOpen && day.isFull) {
       windowText = 'Full';

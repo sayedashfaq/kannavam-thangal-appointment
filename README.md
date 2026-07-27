@@ -121,19 +121,23 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | Command | Description |
 |---------|-------------|
 | `menu` | Show the menu |
-| `open` | Open booking |
-| `close` | Close booking |
-| `leave [reason]` | Mark the consultant unavailable and close booking |
-| `resume` | Resume booking |
-| `status` | Active consultation status with dates |
-| `today` / `list` | Bookings for the active consultation day |
-| `upcoming` | Next consultation days with dates and token windows |
+| `close` | Pause **all** new bookings temporarily |
+| `open` | Allow bookings again after `close` |
+| `leave tuesday` | Put **next Tuesday** on leave (Wednesday/Saturday stay open) |
+| `leave saturday emergency` | Day leave with reason; cancels that day's bookings and WhatsApps every visitor |
+| `resume tuesday` | Clear leave for that Tuesday |
+| `status` | Active consultation + day leaves |
+| `today` / `list` | Bookings for the active open day |
+| `list tuesday` | Bookings for next Tuesday |
+| `upcoming` | Next days with dates, leave flags, and token windows |
 | `find <phone>` | Booking details for a visitor |
 | `cancel <token>` | Cancel a booking, e.g. `cancel T005` |
 | `limit <number>` | Update token limit for the active consultation day |
 | `schedules` | Show configured weekdays |
 | `schedule <day> "<location>" <mStart> <mEnd> <aStart> <aEnd> <limit>` | Update a day |
 | `help` | Full command list |
+
+**Leave vs close:** `leave tuesday` only blocks that dated consultation. `close` pauses everything until `open`.
 
 Example schedule update:
 

@@ -15,11 +15,13 @@ const env = require('../config/env');
 const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
 const counterService = require('./counterService');
+const leaveService = require('./leaveService');
 const logger = require('../utils/logger');
 
 const BookingError = {
   BOOKING_CLOSED: 'BOOKING_CLOSED',
   CONSULTANT_ON_LEAVE: 'CONSULTANT_ON_LEAVE',
+  DAY_ON_LEAVE: 'DAY_ON_LEAVE',
   NOT_CONSULTATION_DAY: 'NOT_CONSULTATION_DAY',
   BOOKING_WINDOW_CLOSED: 'BOOKING_WINDOW_CLOSED',
   TOKEN_LIMIT_REACHED: 'TOKEN_LIMIT_REACHED',
@@ -30,26 +32,38 @@ const BookingError = {
 
 const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
 
-const loadUpcoming = async (now = new Date()) =>
-  findUpcomingConsultations(
+const loadUpcoming = async (now = new Date()) => {
+  const upcoming = await findUpcomingConsultations(
     now,
     async (candidate) => scheduleService.getTodaySchedule(candidate),
     async (candidate) => getActiveBookingCount(candidate)
   );
 
+  for (const day of upcoming) {
+    // eslint-disable-next-line no-await-in-loop
+    const leave = await leaveService.getLeaveForDate(day.date);
+    day.onLeave = Boolean(leave);
+    day.leaveReason = leave?.reason || '';
+    if (day.onLeave) {
+      day.dayOpen = false;
+    }
+  }
+
+  return upcoming;
+};
+
 /**
  * Picks the best consultation day that can accept a booking right now.
- * Skips days that are closed for the day or already full, so Monday can
- * land on Tuesday, and a full Tuesday can move to Wednesday when its
- * window is open.
+ * Skips leave days, closed days, and full days so Tuesday leave still
+ * lets Wednesday fill when its window is open.
  */
 const pickBookableDay = (upcoming) =>
   upcoming.find(
-    (day) => day.windowOpen && day.dayOpen && !day.isFull
+    (day) => day.windowOpen && day.dayOpen && !day.isFull && !day.onLeave
   ) || null;
 
 const pickNextOpening = (upcoming) =>
-  upcoming.find((day) => !day.windowOpen && day.dayOpen) || null;
+  upcoming.find((day) => !day.windowOpen && day.dayOpen && !day.onLeave) || null;
 
 const toActiveMeta = (day, now = new Date()) => {
   if (!day) {
@@ -116,11 +130,14 @@ const resolveActiveConsultation = async (now = new Date()) => {
     nextOpening,
     blockedReason: !nearest
       ? 'NONE'
-      : openButBlocked?.isFull
-        ? 'FULL'
-        : openButBlocked && !openButBlocked.dayOpen
-          ? 'DAY_CLOSED'
-          : 'WINDOW_CLOSED',
+      : openButBlocked?.onLeave
+        ? 'DAY_ON_LEAVE'
+        : openButBlocked?.isFull
+          ? 'FULL'
+          : openButBlocked && !openButBlocked.dayOpen
+            ? 'DAY_CLOSED'
+            : 'WINDOW_CLOSED',
+    leaveReason: openButBlocked?.leaveReason || nearest?.leaveReason || '',
   };
 };
 
@@ -134,10 +151,11 @@ const getAvailabilitySnapshot = async (now = new Date()) => {
   const nextOpening = active.nextOpening || null;
 
   let state = 'BOOKABLE';
-  if (settings.consultantOnLeave) state = 'ON_LEAVE';
-  else if (!settings.bookingOpen) state = 'GLOBALLY_CLOSED';
+  // Global pause only — day leave is handled by skipping to the next day.
+  if (!settings.bookingOpen) state = 'GLOBALLY_CLOSED';
   else if (!active.available) state = 'NO_SCHEDULE';
   else if (active.bookable) state = 'BOOKABLE';
+  else if (active.blockedReason === 'DAY_ON_LEAVE') state = 'DAY_ON_LEAVE';
   else if (active.blockedReason === 'FULL') state = 'FULL';
   else if (active.blockedReason === 'DAY_CLOSED') state = 'DAY_CLOSED';
   else state = 'WINDOW_CLOSED';
@@ -202,12 +220,19 @@ const findBookingByPhone = async (phone, date = new Date()) => {
     const current = await Booking.findOne({
       ...query,
       bookingDate: getBookingDate(active.date),
+      status: BOOKING_STATUS.BOOKED,
     });
     if (current) {
       current.displayDate = formatDisplayDate(active.date);
       return current;
     }
   }
+
+  const booked = await Booking.findOne({
+    ...query,
+    status: BOOKING_STATUS.BOOKED,
+  }).sort({ bookingDate: -1, createdAt: -1 });
+  if (booked) return booked;
 
   return Booking.findOne(query).sort({ bookingDate: -1, createdAt: -1 });
 };
@@ -233,11 +258,6 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
   const snapshot = await getAvailabilitySnapshot(now);
   const { settings, active, nextOpening } = snapshot;
 
-  if (settings.consultantOnLeave) {
-    const error = new Error(BookingError.CONSULTANT_ON_LEAVE);
-    error.meta = availabilityMeta(active, nextOpening);
-    throw error;
-  }
   if (!settings.bookingOpen) {
     const error = new Error(BookingError.BOOKING_CLOSED);
     error.meta = availabilityMeta(active, nextOpening);
@@ -248,7 +268,24 @@ const createBooking = async ({ visitorName, place, phone, whatsappNumber = '' })
     error.meta = availabilityMeta(active, nextOpening);
     throw error;
   }
+  if (await leaveService.isDateOnLeave(active.date)) {
+    const leave = await leaveService.getLeaveForDate(active.date);
+    const error = new Error(BookingError.DAY_ON_LEAVE);
+    error.meta = {
+      ...availabilityMeta(active, nextOpening),
+      reason: leave?.reason || '',
+    };
+    throw error;
+  }
   if (!active.bookable) {
+    if (active.blockedReason === 'DAY_ON_LEAVE') {
+      const error = new Error(BookingError.DAY_ON_LEAVE);
+      error.meta = {
+        ...availabilityMeta(active, nextOpening),
+        reason: active.leaveReason || '',
+      };
+      throw error;
+    }
     if (active.blockedReason === 'FULL') {
       const error = new Error(BookingError.TOKEN_LIMIT_REACHED);
       error.meta = availabilityMeta(active, nextOpening);
@@ -356,14 +393,16 @@ const cancelBooking = async (token, date = new Date()) => {
 
 const getTodayStatus = async (date = new Date()) => {
   const snapshot = await getAvailabilitySnapshot(date);
-  const { settings, active, nextOpening } = snapshot;
+  const { active, nextOpening } = snapshot;
   const bookedCount =
     active.windowOpen && active.date ? await getActiveBookingCount(active.date) : 0;
+  const activeLeaves = await leaveService.getActiveLeaves(date);
 
   return {
     bookingOpen: snapshot.state === 'BOOKABLE',
-    consultantOnLeave: settings.consultantOnLeave,
-    leaveReason: settings.leaveReason,
+    consultantOnLeave: false,
+    leaveReason: '',
+    activeLeaves,
     isConsultationDay: active.dayName === getTodayDayName(date),
     dayName: getTodayDayName(date),
     todayLabel: formatConsultationLabel(date, date),
@@ -386,6 +425,21 @@ const getTodayStatus = async (date = new Date()) => {
   };
 };
 
+const getBookingsForDayName = async (dayName, fromDate = new Date()) => {
+  const target = await leaveService.findNextConsultationDateForDay(dayName, fromDate);
+  if (!target) return { ok: false, error: 'NO_CONSULTATION_DAY' };
+
+  const bookings = await getBookingsForDate(target.date);
+  const leave = await leaveService.getLeaveForDate(target.date);
+
+  return {
+    ok: true,
+    target,
+    leave,
+    bookings,
+  };
+};
+
 module.exports = {
   BookingError,
   tokenCounterKey,
@@ -401,4 +455,5 @@ module.exports = {
   createBooking,
   cancelBooking,
   getTodayStatus,
+  getBookingsForDayName,
 };

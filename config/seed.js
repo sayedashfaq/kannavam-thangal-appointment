@@ -74,6 +74,15 @@ const seed = async () => {
     });
     logger.info('Settings document created');
   }
+
+  // Old global leave must not block day-specific leave flow.
+  if (settings?.consultantOnLeave) {
+    settings.consultantOnLeave = false;
+    settings.leaveReason = '';
+    if (!settings.bookingOpen) settings.bookingOpen = true;
+    await settings.save();
+    logger.info('Cleared legacy global leave flag');
+  }
 };
 
 const runSeed = async () => {

@@ -191,6 +191,10 @@ const handleBookingFailure = async (from, phone, error) => {
       return;
     }
 
+    case BookingError.DAY_ON_LEAVE:
+      await reply(from, messages.DAY_ON_LEAVE(meta));
+      return;
+
     case BookingError.NOT_CONSULTATION_DAY:
       await reply(from, messages.NOT_CONSULTATION_DAY(meta));
       return;
