@@ -137,6 +137,9 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | `change bandichal` | Set active day's venue to Jalaliya Manzil Bandichal |
 | `change adhur tuesday` | Set Tuesday to Adhur |
 | `change bandichal saturday` | Set Saturday to Bandichal |
+| `change time wednesday 10am to 12pm` | Set Wednesday morning to 10:00–12:00 (afternoon kept) |
+| `change time wednesday 10am to 12pm 1pm to 4pm` | Set Wednesday morning + afternoon hours |
+| `change time 10am to 1pm 2pm to 4pm` | Set hours for the active consultation day |
 | `schedules` | Show configured weekdays |
 | `schedule <day> "<location>" <mStart> <mEnd> <aStart> <aEnd> <limit>` | Update a day |
 | `help` | Full command list |

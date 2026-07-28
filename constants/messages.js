@@ -252,9 +252,10 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
 5️⃣ Day leave — \`leave tuesday\`
 6️⃣ Open a day again — \`open tuesday\`
 7️⃣ Venue — \`change adhur\` / \`change bandichal\`
-8️⃣ Family size — \`members 5\`
-9️⃣ Token limit — \`limit 25\`
-🔟 Help — \`help\``,
+8️⃣ Hours — \`change time wednesday 10am to 1pm 2pm to 4pm\`
+9️⃣ Family size — \`members 5\`
+🔟 Token limit — \`limit 25\`
+ℹ️ Help — \`help\``,
 
   ADMIN_HELP: `*Available Commands*
 
@@ -285,11 +286,16 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
 \`change bandichal\` — Set active day's venue to Jalaliya Manzil Bandichal
 \`change adhur tuesday\` — Set Tuesday venue to Adhur
 \`change bandichal saturday\` — Set Saturday venue to Bandichal
+\`change time wednesday 10am to 12pm\` — Morning only (afternoon kept)
+\`change time wednesday 10am to 12pm 1pm to 4pm\` — Morning + afternoon
+\`change time 10am to 1pm 2pm to 4pm\` — Hours for the active day
 \`location\` — Same as \`change\`
 \`help\` — This help
 
-*Update a schedule*
-\`schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30\``,
+*Update a full schedule*
+\`schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30\`
+
+Default hours: *10:00–13:00* and *14:00–16:00*.`,
 
   BOOKING_OPENED: 'All booking is open again.',
   BOOKING_CLOSED_ADMIN: 'All booking is paused temporarily.\nVisitors cannot take new tokens until you send `open`.',
@@ -299,6 +305,10 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
     `Venue updated.\n\n*Day:* ${day}\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}\n\nBookings updated: ${updatedCount}\nVisitors notified: ${notifiedCount}`,
   LOCATION_UPDATED_MULTI: ({ days, venue, updatedCount = 0, notifiedCount = 0 }) =>
     `Venue updated for *${days.join(', ')}*.\n\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}\n\nBookings updated: ${updatedCount}\nVisitors notified: ${notifiedCount}`,
+  TIME_USAGE:
+    'Change consultation hours.\n\nExamples:\n`change time wednesday 10am to 12pm`\n`change time wednesday 10am to 12pm 1pm to 4pm`\n`change time 10am to 1pm 2pm to 4pm`\n\nOne range = morning only (afternoon stays).\nTwo ranges = morning + afternoon.\n\nDefault hours: 10:00–13:00 and 14:00–16:00.',
+  TIME_UPDATED: (schedule) =>
+    `Hours updated.\n\n*Day:* ${schedule.day}\n*Morning:* ${schedule.morningStart}–${schedule.morningEnd}\n*Afternoon:* ${schedule.afternoonStart}–${schedule.afternoonEnd}`,
   LEAVE_USAGE:
     'Specify the consultation day.\n\nExamples:\n`leave tuesday`\n`leave saturday emergency`\n`leave next wednesday Travelling`\n\nOther days stay open for booking.\nUse `close` if you need to pause *everything*.',
   RESUME_USAGE:

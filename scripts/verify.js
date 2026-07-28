@@ -110,6 +110,24 @@ const runUnitChecks = () => {
   check('Greeting with punctuation recognised', isGreeting('hello!'));
   check('Ordinary name not a greeting', !isGreeting('Muhammed Ali'));
 
+  const { parseFlexibleTime, parseTimeRanges } = require('../helpers/timeHelper');
+  check('Flexible time parses 10am', parseFlexibleTime('10am') === '10:00');
+  check('Flexible time parses 12 pm', parseFlexibleTime('12 pm') === '12:00');
+  check('Flexible time parses 1:30pm', parseFlexibleTime('1:30pm') === '13:30');
+  check(
+    'Time ranges parse morning and afternoon',
+    (() => {
+      const ranges = parseTimeRanges('10am to 12pm 1pm to 4pm');
+      return (
+        ranges?.length === 2 &&
+        ranges[0].start === '10:00' &&
+        ranges[0].end === '12:00' &&
+        ranges[1].start === '13:00' &&
+        ranges[1].end === '16:00'
+      );
+    })()
+  );
+
   const schedule = {
     morningStart: '10:00',
     morningEnd: '13:00',
@@ -216,10 +234,13 @@ const runFlowChecks = async () => {
       { active: true, bookingOpen: true, tokenLimit: 30 }
     );
     await DayLeave.deleteMany({});
+    // Clear every booking for the bookable consultation day so leftover live
+    // tokens (T002, T003, …) cannot collide with this suite.
     await Booking.deleteMany({
       $or: [
         { phone: { $in: TEST_NUMBERS } },
         { whatsappNumber: { $in: TEST_NUMBERS } },
+        { bookingDate: getBookingDate(bookableDate) },
       ],
     });
     await Conversation.deleteMany({
@@ -589,6 +610,31 @@ const runFlowChecks = async () => {
 
     const badFormat = (await send(waNumber(ADMIN), 'schedule Tuesday Adhur 10:00')).join('\n');
     check('Malformed schedule command is explained', badFormat.includes('Usage'));
+
+    const timeMorning = (
+      await send(waNumber(ADMIN), `change time ${bookableDay} 10am to 12pm`)
+    ).join('\n');
+    const scheduleAfterMorning = await Schedule.findById(schedule._id);
+    check(
+      'Change time morning-only updates morning hours',
+      timeMorning.includes('Hours updated') &&
+        scheduleAfterMorning?.morningStart === '10:00' &&
+        scheduleAfterMorning?.morningEnd === '12:00',
+      `${scheduleAfterMorning?.morningStart}-${scheduleAfterMorning?.morningEnd}`
+    );
+
+    const timeBoth = (
+      await send(waNumber(ADMIN), `change time ${bookableDay} 10am to 1pm 2pm to 4pm`)
+    ).join('\n');
+    const scheduleAfterBoth = await Schedule.findById(schedule._id);
+    check(
+      'Change time both sessions updates morning and afternoon',
+      timeBoth.includes('Hours updated') &&
+        scheduleAfterBoth?.morningEnd === '13:00' &&
+        scheduleAfterBoth?.afternoonStart === '14:00' &&
+        scheduleAfterBoth?.afternoonEnd === '16:00',
+      `${scheduleAfterBoth?.morningStart}-${scheduleAfterBoth?.morningEnd} / ${scheduleAfterBoth?.afternoonStart}-${scheduleAfterBoth?.afternoonEnd}`
+    );
 
     await Conversation.deleteMany({ phone: { $in: [waNumber(ADMIN), ADMIN] } });
     const unknown = (await send(waNumber(ADMIN), 'opne')).join('\n');

@@ -142,6 +142,66 @@ const isValidTimeString = (timeStr) => {
   return hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
 };
 
+/**
+ * Accepts admin-friendly clocks: 10am, 10 am, 10:00, 12pm, 1:30 PM.
+ * Returns 24-hour `HH:mm`, or null when invalid.
+ */
+const parseFlexibleTime = (value) => {
+  const raw = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\./g, '')
+    .replace(/\s+/g, ' ');
+
+  const match = raw.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/);
+  if (!match) return null;
+
+  let hours = Number(match[1]);
+  const minutes = match[2] ? Number(match[2]) : 0;
+  const meridiem = match[3] || '';
+
+  if (minutes < 0 || minutes > 59) return null;
+
+  if (meridiem) {
+    if (hours < 1 || hours > 12) return null;
+    if (meridiem === 'am') {
+      hours = hours === 12 ? 0 : hours;
+    } else {
+      hours = hours === 12 ? 12 : hours + 12;
+    }
+  } else if (hours > 23) {
+    return null;
+  }
+
+  if (hours < 0 || hours > 23) return null;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+};
+
+/**
+ * Pulls one or two "start to end" ranges from text such as:
+ *   10am to 12pm
+ *   10 am to 12pm 1pm to 4pm
+ */
+const parseTimeRanges = (text) => {
+  const source = String(text || '').trim();
+  if (!source) return [];
+
+  const rangePattern =
+    /(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:to|-|–|—)\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/gi;
+  const ranges = [];
+  let match = rangePattern.exec(source);
+
+  while (match) {
+    const start = parseFlexibleTime(match[1]);
+    const end = parseFlexibleTime(match[2]);
+    if (!start || !end) return null;
+    ranges.push({ start, end });
+    match = rangePattern.exec(source);
+  }
+
+  return ranges;
+};
+
 const formatMinutesToTime = (totalMinutes) => {
   const clamped = Math.max(0, Math.min(totalMinutes, 24 * 60 - 1));
   const hours = Math.floor(clamped / 60);
@@ -185,6 +245,8 @@ module.exports = {
   isWithinAdvanceBookingWindow,
   parseTimeToMinutes,
   isValidTimeString,
+  parseFlexibleTime,
+  parseTimeRanges,
   formatMinutesToTime,
   calculateReportingTime,
 };

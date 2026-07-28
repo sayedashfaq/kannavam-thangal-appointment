@@ -2,7 +2,12 @@ const messages = require('../constants/messages');
 const env = require('../config/env');
 const { phonesMatch, toLocalNumber } = require('../helpers/phoneHelper');
 const { capitalizeDay, isValidWeekday } = require('../helpers/validationHelper');
-const { isValidTimeString, parseTimeToMinutes, formatDisplayDate } = require('../helpers/timeHelper');
+const {
+  isValidTimeString,
+  parseTimeToMinutes,
+  formatDisplayDate,
+  parseTimeRanges,
+} = require('../helpers/timeHelper');
 const { isValidTokenFormat, normalizeToken } = require('../helpers/tokenHelper');
 const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
@@ -117,6 +122,10 @@ const handleAdminCommand = async (phone, text) => {
 
     case 'change':
     case 'location':
+      // `change time ...` updates hours; `change adhur` updates venue.
+      if (/^time\b/i.test(argument)) {
+        return changeTimeReply(argument.replace(/^time\b/i, '').trim());
+      }
       return changeLocationReply(argument);
 
     case 'schedule':
@@ -413,6 +422,70 @@ const changeLocationReply = async (argument) => {
     venue
   );
   return messages.LOCATION_UPDATED({ day: schedule.day, venue, ...notify });
+};
+
+/**
+ * Parses:
+ *   change time wednesday 10am to 12pm
+ *   change time wednesday 10 am to 12pm 1pm to 4pm
+ *   change time 10am to 1pm 2pm to 4pm
+ *
+ * One range updates morning only (afternoon kept).
+ * Two ranges update morning + afternoon.
+ * Default consultation hours are 10:00–13:00 and 14:00–16:00.
+ */
+const changeTimeReply = async (argument) => {
+  const text = String(argument || '').trim();
+  if (!text) return messages.TIME_USAGE;
+
+  const tokens = text.split(/\s+/).filter(Boolean);
+  let dayName = null;
+  let rangesText = text;
+
+  if (tokens[0] && isValidWeekday(tokens[0])) {
+    dayName = capitalizeDay(tokens[0]);
+    rangesText = tokens.slice(1).join(' ');
+  }
+
+  const ranges = parseTimeRanges(rangesText);
+  if (!ranges || ranges.length === 0 || ranges.length > 2) {
+    return messages.TIME_USAGE;
+  }
+
+  for (const range of ranges) {
+    if (parseTimeToMinutes(range.start) >= parseTimeToMinutes(range.end)) {
+      return messages.INVALID_TIME;
+    }
+  }
+
+  if (!dayName) {
+    const status = await bookingService.getTodayStatus();
+    if (!status.schedule?.day) return messages.NO_SCHEDULE_TODAY;
+    dayName = status.schedule.day;
+  }
+
+  const existing = await scheduleService.getScheduleByDay(dayName);
+  if (!existing) return messages.LEAVE_NO_DAY;
+
+  const updates = {
+    morningStart: ranges[0].start,
+    morningEnd: ranges[0].end,
+  };
+
+  if (ranges[1]) {
+    updates.afternoonStart = ranges[1].start;
+    updates.afternoonEnd = ranges[1].end;
+  }
+
+  if (
+    parseTimeToMinutes(updates.morningEnd) >
+    parseTimeToMinutes(updates.afternoonStart || existing.afternoonStart)
+  ) {
+    return messages.INVALID_TIME;
+  }
+
+  const schedule = await scheduleService.updateSchedule(dayName, updates);
+  return messages.TIME_UPDATED(schedule);
 };
 
 const updateScheduleReply = async (raw) => {
