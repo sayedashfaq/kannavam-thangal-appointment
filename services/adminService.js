@@ -381,10 +381,10 @@ const updateMembersReply = async (argument) => {
 /**
  * Parses:
  *   change adhur
- *   change bandichal
+ *   change bendichal
  *   change adhur tuesday
- *   change bandichal saturday
- *   location bendichal wednesday
+ *   change bendichal saturday
+ *   location bandichal wednesday
  */
 const changeLocationReply = async (argument) => {
   const tokens = String(argument || '')

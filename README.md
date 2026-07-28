@@ -24,7 +24,7 @@ Node.js · Express · MongoDB (Mongoose) · WhatsApp Cloud API (Meta) · Winston
 |-----|----------|---------|-----------|---------------|
 | Tuesday | Jalaliya Manzil Adhur | 10:00–13:00 | 14:00–16:00 | 30 |
 | Wednesday | Jalaliya Manzil Adhur | 10:00–13:00 | 14:00–16:00 | 25 |
-| Saturday | Jalaliya Manzil Bandichal | 10:00–13:00 | 14:00–16:00 | 35 |
+| Saturday | Jalaliya Manzil Bendichal | 10:00–13:00 | 14:00–16:00 | 35 |
 
 Bookings are accepted only while an active schedule exists for the current day, so adding or pausing a day needs no code change.
 
@@ -134,9 +134,9 @@ Accepted only from the number in `ADMIN_PHONE`. Messages from any other number a
 | `find <phone>` | Booking details for a visitor |
 | `cancel <token>` | Cancel a booking, e.g. `cancel T005` |
 | `change adhur` / `location adhur` | Set active day's venue to Jalaliya Manzil Adhur |
-| `change bandichal` | Set active day's venue to Jalaliya Manzil Bandichal |
+| `change bendichal` | Set active day's venue to Jalaliya Manzil Bendichal |
 | `change adhur tuesday` | Set Tuesday to Adhur |
-| `change bandichal saturday` | Set Saturday to Bandichal |
+| `change bendichal saturday` | Set Saturday to Bendichal |
 | `change time wednesday 10am to 12pm` | Set Wednesday morning to 10:00–12:00 (afternoon kept) |
 | `change time wednesday 10am to 12pm 1pm to 4pm` | Set Wednesday morning + afternoon hours |
 | `change time 10am to 1pm 2pm to 4pm` | Set hours for the active consultation day |

@@ -352,7 +352,7 @@ const runFlowChecks = async () => {
     const invalidFrom = waNumber(TEST_NUMBERS[2]);
     await send(invalidFrom, 'Hi');
     await send(invalidFrom, 'Test Visitor');
-    await send(invalidFrom, 'Bandichal');
+    await send(invalidFrom, 'Bendichal');
     const invalidReply = (await send(invalidFrom, '12345')).join('\n');
     check('Invalid mobile number is rejected', invalidReply.includes('valid'), invalidReply.slice(0, 60));
 
@@ -501,7 +501,7 @@ const runFlowChecks = async () => {
     );
 
     // --- Venue change notifies booked visitors ---------------------------
-    const venueChangeReply = (await send(waNumber(ADMIN), `change bandichal ${bookableDay}`)).join(
+    const venueChangeReply = (await send(waNumber(ADMIN), `change bendichal ${bookableDay}`)).join(
       '\n'
     );
     const bookingAfterVenue = await Booking.findById(firstBookingAfterLeave._id);
@@ -509,7 +509,7 @@ const runFlowChecks = async () => {
     check(
       'Admin venue change confirms update',
       venueChangeReply.includes('Venue updated') &&
-        venueChangeReply.toLowerCase().includes('bandichal') &&
+        venueChangeReply.toLowerCase().includes('bendichal') &&
         venueChangeReply.includes('Visitors notified'),
       venueChangeReply.slice(0, 120)
     );
@@ -517,7 +517,7 @@ const runFlowChecks = async () => {
       'Booked visitor is notified of venue change',
       venueNotice.includes('السَّلاَمُ عَلَيْكُمْ') &&
         venueNotice.includes(firstBookingAfterLeave.tokenNumber) &&
-        venueNotice.toLowerCase().includes('bandichal') &&
+        venueNotice.toLowerCase().includes('bendichal') &&
         venueNotice.includes('maps.app.goo.gl'),
       venueNotice.slice(0, 120)
     );
@@ -525,7 +525,7 @@ const runFlowChecks = async () => {
       'Booking location is updated after venue change',
       String(bookingAfterVenue?.consultationLocation || '')
         .toLowerCase()
-        .includes('bandichal'),
+        .includes('bendichal'),
       bookingAfterVenue?.consultationLocation
     );
 

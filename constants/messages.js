@@ -251,7 +251,7 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
 4️⃣ Bookings — \`today\` / \`list\` / \`list tuesday\`
 5️⃣ Day leave — \`leave tuesday\`
 6️⃣ Open a day again — \`open tuesday\`
-7️⃣ Venue — \`change adhur\` / \`change bandichal\`
+7️⃣ Venue — \`change adhur\` / \`change bendichal\`
 8️⃣ Hours — \`change time wednesday 10am to 1pm 2pm to 4pm\`
 9️⃣ Family size — \`members 5\`
 🔟 Token limit — \`limit 25\`
@@ -283,9 +283,9 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
 \`members\` — Show max family members per token
 \`members 5\` — Set max family members allowed on one token
 \`change adhur\` — Set active day's venue to Jalaliya Manzil Adhur
-\`change bandichal\` — Set active day's venue to Jalaliya Manzil Bandichal
+\`change bendichal\` — Set active day's venue to Jalaliya Manzil Bendichal
 \`change adhur tuesday\` — Set Tuesday venue to Adhur
-\`change bandichal saturday\` — Set Saturday venue to Bandichal
+\`change bendichal saturday\` — Set Saturday venue to Bendichal
 \`change time wednesday 10am to 12pm\` — Morning only (afternoon kept)
 \`change time wednesday 10am to 12pm 1pm to 4pm\` — Morning + afternoon
 \`change time 10am to 1pm 2pm to 4pm\` — Hours for the active day
@@ -300,7 +300,7 @@ Default hours: *10:00–13:00* and *14:00–16:00*.`,
   BOOKING_OPENED: 'All booking is open again.',
   BOOKING_CLOSED_ADMIN: 'All booking is paused temporarily.\nVisitors cannot take new tokens until you send `open`.',
   LOCATION_USAGE: (venuesHelp) =>
-    `Change consultation venue.\n\nExamples:\n\`change adhur\`\n\`change bandichal\`\n\`change adhur tuesday\`\n\`change bandichal saturday\`\n\nVenues:\n${venuesHelp}`,
+    `Change consultation venue.\n\nExamples:\n\`change adhur\`\n\`change bendichal\`\n\`change adhur tuesday\`\n\`change bendichal saturday\`\n\nVenues:\n${venuesHelp}`,
   LOCATION_UPDATED: ({ day, venue, updatedCount = 0, notifiedCount = 0 }) =>
     `Venue updated.\n\n*Day:* ${day}\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}\n\nBookings updated: ${updatedCount}\nVisitors notified: ${notifiedCount}`,
   LOCATION_UPDATED_MULTI: ({ days, venue, updatedCount = 0, notifiedCount = 0 }) =>

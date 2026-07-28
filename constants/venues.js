@@ -6,10 +6,11 @@ const VENUES = {
     name: 'Jalaliya Manzil Adhur',
     mapsUrl: 'https://maps.app.goo.gl/U4HBFKQiYLked5xn9',
   },
-  bandichal: {
-    key: 'bandichal',
-    aliases: ['bandichal', 'bendichal'],
-    name: 'Jalaliya Manzil Bandichal',
+  bendichal: {
+    key: 'bendichal',
+    // Keep bandichal as an alias so older admin habits still work.
+    aliases: ['bendichal', 'bandichal'],
+    name: 'Jalaliya Manzil Bendichal',
     mapsUrl: 'https://maps.app.goo.gl/mxAD97MXMmeUoAe67',
   },
 };
@@ -33,8 +34,8 @@ const resolveVenue = (value) => {
 
 const getVenueByLocationName = (locationName) => {
   const normalized = String(locationName || '').toLowerCase();
-  if (normalized.includes('bandichal') || normalized.includes('bendichal')) {
-    return VENUES.bandichal;
+  if (normalized.includes('bendichal') || normalized.includes('bandichal')) {
+    return VENUES.bendichal;
   }
   if (normalized.includes('adhur') || normalized.includes('athur')) {
     return VENUES.adhur;
