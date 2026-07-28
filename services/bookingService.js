@@ -36,6 +36,19 @@ const BookingError = {
 
 const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
 
+/**
+ * Align the token counter with the highest token already used that day
+ * (booked or cancelled). Empty day → 0 so the next issue is T001.
+ */
+const syncTokenCounterForDate = async (date) => {
+  const highest = await Booking.findOne({ bookingDate: getBookingDate(date) })
+    .sort({ tokenSequence: -1 })
+    .select('tokenSequence')
+    .lean();
+
+  await counterService.setSequence(tokenCounterKey(date), highest?.tokenSequence || 0);
+};
+
 const loadUpcoming = async (now = new Date()) => {
   const upcoming = await findUpcomingConsultations(
     now,
@@ -400,6 +413,11 @@ const createBooking = async ({
     error.meta = availabilityMeta(active, nextOpening);
     throw error;
   }
+
+  // Keep the counter aligned with real rows for this day.
+  // If tests/admin wiped bookings, this resets so the next token is T001
+  // again. If T001 was cancelled, the max stays 1 so the next is T002.
+  await syncTokenCounterForDate(active.date);
 
   const sequence = await counterService.getNextSequence(tokenCounterKey(active.date));
   const tokenNumber = generateTokenNumber(sequence);
