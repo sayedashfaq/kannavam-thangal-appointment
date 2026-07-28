@@ -112,7 +112,7 @@ VERIFY_MEMORY=1 npm run verify
 3. If booking is open, system asks for full name → place → mobile number → **family members**
 4. Visitor receives the token number, dated consultation, member count, location and reporting time (10 minutes per token); the admin is notified
 
-Tokens open from the **day before** each consultation day (Asia/Kolkata). If the nearest day is on leave or full, the system moves visitors to the next available day (including early-opening the next day when leave blocks the current window).
+Tokens open from the **day before** each consultation day until **9:00 AM** on the consultation morning (Asia/Kolkata). Example: Tuesday tokens can be booked all Monday and on Tuesday until 9:00 AM. If the nearest day is on leave or full, the system moves visitors to the next available day (including early-opening the next day when leave blocks the current window).
 
 ## Admin Commands
 

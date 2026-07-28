@@ -87,10 +87,12 @@ const handleVisitorMessage = async (from, text) => {
 
     case CONVERSATION_STEPS.COMPLETED: {
       const existing = await bookingService.findActiveUpcomingBooking(from, from);
-      await reply(
-        from,
-        existing ? messages.DUPLICATE_BOOKING(existing) : messages.ALREADY_BOOKED_HINT
-      );
+      if (existing) {
+        await reply(from, messages.DUPLICATE_BOOKING(existing));
+        return;
+      }
+      // Stale completed state (cancelled / wiped booking) → allow a fresh booking.
+      await startBookingFlow(from);
       break;
     }
 
@@ -231,8 +233,12 @@ const notifyAdmin = async (booking) => {
 };
 
 const handleBookingFailure = async (from, phone, error) => {
-  await conversationService.resetConversation(from);
   const meta = error.meta || {};
+
+  // Keep duplicate visitors on COMPLETED so the next Hi shows their token.
+  if (error.message !== BookingError.DUPLICATE_BOOKING) {
+    await conversationService.resetConversation(from);
+  }
 
   switch (error.message) {
     case BookingError.BOOKING_CLOSED:
@@ -278,7 +284,8 @@ const handleBookingFailure = async (from, phone, error) => {
 
     case BookingError.DUPLICATE_BOOKING: {
       const existing =
-        meta.booking || (await bookingService.findBookingByPhone(phone));
+        meta.booking || (await bookingService.findActiveUpcomingBooking(from, phone || from));
+      await conversationService.setStep(from, CONVERSATION_STEPS.COMPLETED, {});
       await reply(
         from,
         existing ? messages.DUPLICATE_BOOKING(existing) : messages.GENERIC_ERROR

@@ -5,13 +5,14 @@ const {
   getBookingDate,
   getDateKey,
   getTodayDayName,
+  getZonedParts,
   calculateReportingTime,
   findUpcomingConsultations,
   formatDisplayDate,
   formatConsultationLabel,
   addLocalDays,
 } = require('../helpers/timeHelper');
-const { toLocalNumber } = require('../helpers/phoneHelper');
+const { toLocalNumber, phoneLookupCandidates } = require('../helpers/phoneHelper');
 const settingsService = require('./settingsService');
 const scheduleService = require('./scheduleService');
 const counterService = require('./counterService');
@@ -58,16 +59,23 @@ const loadUpcoming = async (now = new Date()) => {
 /**
  * If Tuesday is on leave, Wednesday (or the next open day) becomes bookable
  * during the same window Tuesday would have used — visitors are not stuck.
+ * That window is: day-before all day, plus consultation morning until 9:00 AM.
  */
 const isEarlyOpenAfterLeave = (day, upcoming, now = new Date()) => {
   const today = getBookingDate(now).getTime();
-  const dayEnd = getBookingDate(day.date).getTime();
+  const dayKey = getBookingDate(day.date).getTime();
+  const { hour, minute } = getZonedParts(now);
+  const nowMinutes = hour * 60 + minute;
 
   return upcoming.some((prior) => {
     if (prior.date.getTime() >= day.date.getTime()) return false;
     if (!prior.onLeave) return false;
+
     const windowStart = getBookingDate(addLocalDays(prior.date, -1)).getTime();
-    return today >= windowStart && today <= dayEnd;
+    if (today < windowStart) return false;
+    if (today < dayKey) return true;
+    if (today === dayKey) return nowMinutes < 9 * 60;
+    return false;
   });
 };
 
@@ -226,9 +234,8 @@ const getActiveBookingCount = async (date) =>
   });
 
 const findDuplicateBooking = async (phone, whatsappNumber = '', date) => {
-  const localPhone = toLocalNumber(phone);
-  const localWhatsapp = toLocalNumber(whatsappNumber);
-  const candidates = [localPhone, localWhatsapp].filter(Boolean);
+  const candidates = phoneLookupCandidates(phone, whatsappNumber);
+  if (candidates.length === 0) return null;
 
   return Booking.findOne({
     bookingDate: getBookingDate(date),
@@ -247,9 +254,7 @@ const findActiveUpcomingBooking = async (
   whatsappNumber = '',
   now = new Date()
 ) => {
-  const localPhone = toLocalNumber(phone);
-  const localWhatsapp = toLocalNumber(whatsappNumber);
-  const candidates = [...new Set([localPhone, localWhatsapp].filter(Boolean))];
+  const candidates = phoneLookupCandidates(phone, whatsappNumber);
   if (candidates.length === 0) return null;
 
   const booking = await Booking.findOne({

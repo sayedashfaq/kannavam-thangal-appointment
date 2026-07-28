@@ -33,10 +33,34 @@ const phonesMatch = (phone1, phone2) => {
   return Boolean(a) && a === b;
 };
 
+/**
+ * Builds every common storage/search form for a phone so bookings saved as
+ * 9876543210, 919876543210 or 09876543210 are all found from WhatsApp `from`.
+ */
+const phoneLookupCandidates = (...phones) => {
+  const candidates = new Set();
+
+  for (const phone of phones) {
+    const cleaned = normalizePhone(phone);
+    const local = toLocalNumber(phone);
+    if (cleaned) candidates.add(cleaned);
+    if (local) {
+      candidates.add(local);
+      if (local.length === 10) {
+        candidates.add(`91${local}`);
+        candidates.add(`0${local}`);
+      }
+    }
+  }
+
+  return [...candidates];
+};
+
 module.exports = {
   normalizePhone,
   toLocalNumber,
   validatePhone,
   formatPhoneForWhatsApp,
   phonesMatch,
+  phoneLookupCandidates,
 };

@@ -125,16 +125,16 @@ JazakAllahu Khairan.`,
     if (next?.label && next.label !== dayLabel) {
       return `Booking for *${dayLabel}* is not open yet.
 
-Tokens for that day open from *${meta.opensOn}* (the day before).
+Tokens open from *${meta.opensOn}* (the day before) until *9:00 AM* on the consultation morning.
 
 You can book *${next.label}* once tokens open on *${next.opensOn}*.`;
     }
 
     return `Booking for *${dayLabel}* is not open yet.
 
-Tokens open from *${meta.opensOn}* (the day before).
+Tokens open from *${meta.opensOn}* (the day before) until *9:00 AM* on the consultation morning.
 
-Please message again then — no need to wait on the consultation day itself.`;
+Please message again in that window.`;
   },
 
   TOKEN_LIMIT_REACHED: (meta = {}) =>

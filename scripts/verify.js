@@ -110,7 +110,8 @@ const runUnitChecks = () => {
   check('Greeting with punctuation recognised', isGreeting('hello!'));
   check('Ordinary name not a greeting', !isGreeting('Muhammed Ali'));
 
-  const { parseFlexibleTime, parseTimeRanges } = require('../helpers/timeHelper');
+  const { parseFlexibleTime, parseTimeRanges, isWithinAdvanceBookingWindow, addLocalDays, getBookingDate } =
+    require('../helpers/timeHelper');
   check('Flexible time parses 10am', parseFlexibleTime('10am') === '10:00');
   check('Flexible time parses 12 pm', parseFlexibleTime('12 pm') === '12:00');
   check('Flexible time parses 1:30pm', parseFlexibleTime('1:30pm') === '13:30');
@@ -126,6 +127,37 @@ const runUnitChecks = () => {
         ranges[1].end === '16:00'
       );
     })()
+  );
+
+  const consultation = addLocalDays(new Date(), 1);
+  const priorNoonUtc = new Date(
+    `${getBookingDate(addLocalDays(consultation, -1)).toISOString().slice(0, 10)}T06:30:00.000Z`
+  ); // ~12:00 IST
+  check(
+    'Booking window open on the day before consultation',
+    isWithinAdvanceBookingWindow(priorNoonUtc, consultation)
+  );
+
+  // 08:30 IST = 03:00 UTC, 10:00 IST = 04:30 UTC on the consultation date.
+  const consultKey = getBookingDate(consultation).toISOString().slice(0, 10);
+  const eightThirtyIst = new Date(`${consultKey}T03:00:00.000Z`);
+  const tenAmIst = new Date(`${consultKey}T04:30:00.000Z`);
+  check(
+    'Booking window open before 9 AM on consultation morning',
+    isWithinAdvanceBookingWindow(eightThirtyIst, consultation),
+    eightThirtyIst.toISOString()
+  );
+  check(
+    'Booking window closed after 9 AM on consultation morning',
+    !isWithinAdvanceBookingWindow(tenAmIst, consultation),
+    tenAmIst.toISOString()
+  );
+
+  const { phoneLookupCandidates } = require('../helpers/phoneHelper');
+  check(
+    'Phone lookup matches WhatsApp and local forms',
+    phoneLookupCandidates('919876543210').includes('9876543210') &&
+      phoneLookupCandidates('9876543210').includes('919876543210')
   );
 
   const schedule = {
