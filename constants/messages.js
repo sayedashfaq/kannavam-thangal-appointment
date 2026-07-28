@@ -1,8 +1,7 @@
 const CONSULTANT = 'Kannavam Thangal';
 
 // Greeting used on messages sent from the office/system to visitors.
-const SALAM = `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ
-Assalamu Alaikum`;
+const SALAM = `السَّلاَمُ عَلَيْكُمْ وَرَحْمَةُ اللهِ وَبَرَكَاتُهُ`;
 
 const nextHint = (meta = {}) => {
   const next = meta.nextOpening;
@@ -26,8 +25,7 @@ Welcome to the Appointment Service of *${CONSULTANT}*.
 
 You are booking for:
 *${day.label}*
-📍 ${day.schedule?.location || 'Consultation venue'}
-🎫 ${day.remaining} of ${day.schedule?.tokenLimit || 0} tokens left${
+📍 ${day.schedule?.location || 'Consultation venue'}${
         day.earlyOpenAfterLeave
           ? '\n\n_(An earlier consultation day is on leave, so this next day is open for booking now.)_'
           : ''

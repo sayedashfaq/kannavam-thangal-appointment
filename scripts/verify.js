@@ -39,6 +39,7 @@ const {
   getTodayDayName,
   parseTimeToMinutes,
   getBookingDate,
+  addLocalDays,
 } = require('../helpers/timeHelper');
 
 const TEST_NUMBERS = [
@@ -173,13 +174,14 @@ const bookVisitor = async (local, name, place, members = 2) => {
 const runFlowChecks = async () => {
   await ensureBookingTokenIndex();
 
-  const today = getTodayDayName();
-  let schedule = await Schedule.findOne({ day: today });
+  const bookableDate = addLocalDays(new Date(), 1);
+  const bookableDay = getTodayDayName(bookableDate);
+  let schedule = await Schedule.findOne({ day: bookableDay });
   let createdTempSchedule = false;
 
   if (!schedule) {
     schedule = await Schedule.create({
-      day: today,
+      day: bookableDay,
       location: 'Self Test Location',
       morningStart: '10:00',
       morningEnd: '13:00',
@@ -202,11 +204,12 @@ const runFlowChecks = async () => {
     consultantOnLeave: settings.consultantOnLeave,
     leaveReason: settings.leaveReason,
   };
-  const counterKey = bookingService.tokenCounterKey(new Date());
+  const counterKey = bookingService.tokenCounterKey(bookableDate);
   const originalSeq = await counterService.peekSequence(counterKey);
 
   try {
-    // Keep only today's schedule active so leave/token checks stay on one day.
+    // Keep only the next bookable day's schedule active so the suite matches
+    // the real rule: visitors book a consultation on the previous day only.
     await Schedule.updateMany({ _id: { $ne: schedule._id } }, { active: false });
     await Schedule.updateOne(
       { _id: schedule._id },
@@ -270,8 +273,8 @@ const runFlowChecks = async () => {
     );
     check(
       'Booking records the consultation day',
-      firstBooking?.consultationDay === today,
-      `${firstBooking?.consultationDay} vs ${today}`
+      firstBooking?.consultationDay === bookableDay,
+      `${firstBooking?.consultationDay} vs ${bookableDay}`
     );
     check(
       'Reporting time is inside consultation hours',
@@ -394,13 +397,13 @@ const runFlowChecks = async () => {
       // eslint-disable-next-line no-await-in-loop
       await Schedule.updateOne(
         { day: day.dayName },
-        { tokenLimit: day.dayName === today ? 30 : day.schedule.tokenLimit }
+        { tokenLimit: day.dayName === bookableDay ? 30 : day.schedule.tokenLimit }
       );
     }
     await Schedule.updateOne({ _id: schedule._id }, { tokenLimit: 30 });
 
     // --- Day-specific leave ----------------------------------------------
-    const leaveTargetDay = today;
+    const leaveTargetDay = bookableDay;
     const beforeLeave = await bookVisitor(TEST_NUMBERS[6], 'Leave Notify', 'Adhur');
     check(
       'Leave-notify visitor was booked first',
@@ -477,7 +480,7 @@ const runFlowChecks = async () => {
     );
 
     // --- Venue change notifies booked visitors ---------------------------
-    const venueChangeReply = (await send(waNumber(ADMIN), `change bandichal ${today}`)).join(
+    const venueChangeReply = (await send(waNumber(ADMIN), `change bandichal ${bookableDay}`)).join(
       '\n'
     );
     const bookingAfterVenue = await Booking.findById(firstBookingAfterLeave._id);
@@ -491,7 +494,7 @@ const runFlowChecks = async () => {
     );
     check(
       'Booked visitor is notified of venue change',
-      venueNotice.includes('Assalamu Alaikum') &&
+      venueNotice.includes('السَّلاَمُ عَلَيْكُمْ') &&
         venueNotice.includes(firstBookingAfterLeave.tokenNumber) &&
         venueNotice.toLowerCase().includes('bandichal') &&
         venueNotice.includes('maps.app.goo.gl'),
@@ -550,7 +553,7 @@ const runFlowChecks = async () => {
     const upcoming = (await send(waNumber(ADMIN), 'upcoming')).join('\n');
     check(
       'Upcoming lists consultation dates',
-      upcoming.includes('Upcoming Consultations') && upcoming.includes(today),
+      upcoming.includes('Upcoming Consultations') && upcoming.includes(bookableDay),
       upcoming.slice(0, 80)
     );
 

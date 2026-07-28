@@ -123,12 +123,12 @@ const findUpcomingConsultations = async (fromDate, getScheduleForDate, getBooked
   return upcoming;
 };
 
-// Booking for a consultation day opens at local midnight on the day before.
+// Booking for a consultation day is only open on the local calendar day before
+// that consultation. Same-day booking is intentionally blocked.
 const isWithinAdvanceBookingWindow = (now, consultationDate) => {
-  const windowStart = getBookingDate(addLocalDays(consultationDate, -1)).getTime();
-  const windowEnd = getBookingDate(consultationDate).getTime();
-  const today = getBookingDate(now).getTime();
-  return today >= windowStart && today <= windowEnd;
+  const bookingDay = getBookingDate(now).getTime();
+  const priorDay = getBookingDate(addLocalDays(consultationDate, -1)).getTime();
+  return bookingDay === priorDay;
 };
 
 const parseTimeToMinutes = (timeStr) => {
