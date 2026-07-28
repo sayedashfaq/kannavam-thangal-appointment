@@ -37,16 +37,34 @@ const BookingError = {
 const tokenCounterKey = (date) => `token:${getDateKey(date)}`;
 
 /**
- * Align the token counter with the highest token already used that day
- * (booked or cancelled). Empty day → 0 so the next issue is T001.
+ * Align the token counter with real booking rows for this day.
+ * - If bookings were wiped but the counter stayed high → pull it down
+ *   so the next token is T001 again.
+ * - Never go below the highest still-BOOKED sequence.
+ * - Leave reopen resets the counter to 0 on purpose; cancelled history
+ *   must not push it back up.
  */
 const syncTokenCounterForDate = async (date) => {
-  const highest = await Booking.findOne({ bookingDate: getBookingDate(date) })
-    .sort({ tokenSequence: -1 })
-    .select('tokenSequence')
-    .lean();
+  const bookingDate = getBookingDate(date);
+  const [highestAny, highestBooked] = await Promise.all([
+    Booking.findOne({ bookingDate }).sort({ tokenSequence: -1 }).select('tokenSequence').lean(),
+    Booking.findOne({ bookingDate, status: BOOKING_STATUS.BOOKED })
+      .sort({ tokenSequence: -1 })
+      .select('tokenSequence')
+      .lean(),
+  ]);
 
-  await counterService.setSequence(tokenCounterKey(date), highest?.tokenSequence || 0);
+  const maxAny = highestAny?.tokenSequence || 0;
+  const maxBooked = highestBooked?.tokenSequence || 0;
+  const peek = await counterService.peekSequence(tokenCounterKey(date));
+
+  let aligned = peek;
+  if (peek > maxAny) aligned = maxAny;
+  if (maxBooked > aligned) aligned = maxBooked;
+
+  if (aligned !== peek) {
+    await counterService.setSequence(tokenCounterKey(date), aligned);
+  }
 };
 
 const loadUpcoming = async (now = new Date()) => {
