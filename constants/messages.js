@@ -286,7 +286,7 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
 \`change bendichal\` — Set active day's venue to Jalaliya Manzil Bendichal
 \`change adhur tuesday\` — Set Tuesday venue to Adhur
 \`change bendichal saturday\` — Set Saturday venue to Bendichal
-\`change time wednesday 10am to 12pm\` — Morning only (afternoon kept)
+\`change time wednesday 10am to 12pm\` — Morning only (no afternoon)
 \`change time wednesday 10am to 12pm 1pm to 4pm\` — Morning + afternoon
 \`change time 10am to 1pm 2pm to 4pm\` — Hours for the active day
 \`location\` — Same as \`change\`
@@ -295,7 +295,7 @@ ${venue?.mapsUrl || 'Ask the office for directions.'}`,
 *Update a full schedule*
 \`schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30\`
 
-Default hours: *10:00–13:00* and *14:00–16:00*.`,
+Default hours: *10:00 AM–1:00 PM* and *2:00 PM–4:00 PM*.`,
 
   BOOKING_OPENED: 'All booking is open again.',
   BOOKING_CLOSED_ADMIN: 'All booking is paused temporarily.\nVisitors cannot take new tokens until you send `open`.',
@@ -306,9 +306,19 @@ Default hours: *10:00–13:00* and *14:00–16:00*.`,
   LOCATION_UPDATED_MULTI: ({ days, venue, updatedCount = 0, notifiedCount = 0 }) =>
     `Venue updated for *${days.join(', ')}*.\n\n*Location:* ${venue.name}\n*Map:* ${venue.mapsUrl}\n\nBookings updated: ${updatedCount}\nVisitors notified: ${notifiedCount}`,
   TIME_USAGE:
-    'Change consultation hours.\n\nExamples:\n`change time wednesday 10am to 12pm`\n`change time wednesday 10am to 12pm 1pm to 4pm`\n`change time 10am to 1pm 2pm to 4pm`\n\nOne range = morning only (afternoon stays).\nTwo ranges = morning + afternoon.\n\nDefault hours: 10:00–13:00 and 14:00–16:00.',
-  TIME_UPDATED: (schedule) =>
-    `Hours updated.\n\n*Day:* ${schedule.day}\n*Morning:* ${schedule.morningStart}–${schedule.morningEnd}\n*Afternoon:* ${schedule.afternoonStart}–${schedule.afternoonEnd}`,
+    'Change consultation hours.\n\nExamples:\n`change time wednesday 10am to 12pm` — morning only, no afternoon\n`change time wednesday 10am to 12pm 1pm to 4pm` — morning + afternoon\n`change time 10am to 1pm 2pm to 4pm` — active day\n\nDefault hours: 10:00 AM–1:00 PM and 2:00 PM–4:00 PM.',
+  TIME_UPDATED: (schedule) => {
+    const {
+      formatClock12Hour,
+      hasAfternoonSession,
+    } = require('../helpers/timeHelper');
+    const morning = `${formatClock12Hour(schedule.morningStart)} – ${formatClock12Hour(schedule.morningEnd)}`;
+    if (!hasAfternoonSession(schedule)) {
+      return `Hours updated.\n\n*Day:* ${schedule.day}\n*Morning:* ${morning}\n*Afternoon:* none (morning only)`;
+    }
+    const afternoon = `${formatClock12Hour(schedule.afternoonStart)} – ${formatClock12Hour(schedule.afternoonEnd)}`;
+    return `Hours updated.\n\n*Day:* ${schedule.day}\n*Morning:* ${morning}\n*Afternoon:* ${afternoon}`;
+  },
   LEAVE_USAGE:
     'Specify the consultation day.\n\nExamples:\n`leave tuesday`\n`leave saturday emergency`\n`leave next wednesday Travelling`\n\nOther days stay open for booking.\nUse `close` if you need to pause *everything*.',
   RESUME_USAGE:
@@ -335,8 +345,17 @@ Default hours: *10:00–13:00* and *14:00–16:00*.`,
   INVALID_TIME: 'Invalid time. Use 24-hour times such as `10:00` and `13:00`.',
   NO_SCHEDULE_TODAY:
     'No active consultation day is available to update right now.\n\nUse `schedule <day> ...` or `upcoming` to see the next days.',
-  SCHEDULE_UPDATED: (schedule) =>
-    `Schedule updated.\n\n*Day:* ${schedule.day}\n*Location:* ${schedule.location}\n*Morning:* ${schedule.morningStart}–${schedule.morningEnd}\n*Afternoon:* ${schedule.afternoonStart}–${schedule.afternoonEnd}\n*Token Limit:* ${schedule.tokenLimit}`,
+  SCHEDULE_UPDATED: (schedule) => {
+    const {
+      formatClock12Hour,
+      hasAfternoonSession,
+    } = require('../helpers/timeHelper');
+    const morning = `${formatClock12Hour(schedule.morningStart)} – ${formatClock12Hour(schedule.morningEnd)}`;
+    const afternoon = hasAfternoonSession(schedule)
+      ? `${formatClock12Hour(schedule.afternoonStart)} – ${formatClock12Hour(schedule.afternoonEnd)}`
+      : 'none (morning only)';
+    return `Schedule updated.\n\n*Day:* ${schedule.day}\n*Location:* ${schedule.location}\n*Morning:* ${morning}\n*Afternoon:* ${afternoon}\n*Token Limit:* ${schedule.tokenLimit}`;
+  },
   SCHEDULE_FORMAT_HELP:
     'Invalid format. Usage:\n`schedule Tuesday "Jalaliya Manzil Adhur" 10:00 13:00 14:00 16:00 30`',
   LIMIT_UPDATED: (schedule, label) =>

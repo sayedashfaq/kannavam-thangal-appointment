@@ -618,9 +618,14 @@ const runFlowChecks = async () => {
     check(
       'Change time morning-only updates morning hours',
       timeMorning.includes('Hours updated') &&
+        timeMorning.includes('10:00 AM') &&
+        timeMorning.includes('12:00 PM') &&
+        timeMorning.toLowerCase().includes('morning only') &&
         scheduleAfterMorning?.morningStart === '10:00' &&
-        scheduleAfterMorning?.morningEnd === '12:00',
-      `${scheduleAfterMorning?.morningStart}-${scheduleAfterMorning?.morningEnd}`
+        scheduleAfterMorning?.morningEnd === '12:00' &&
+        scheduleAfterMorning?.afternoonStart === '12:00' &&
+        scheduleAfterMorning?.afternoonEnd === '12:00',
+      timeMorning.slice(0, 160)
     );
 
     const timeBoth = (
@@ -630,10 +635,14 @@ const runFlowChecks = async () => {
     check(
       'Change time both sessions updates morning and afternoon',
       timeBoth.includes('Hours updated') &&
+        timeBoth.includes('10:00 AM') &&
+        timeBoth.includes('1:00 PM') &&
+        timeBoth.includes('2:00 PM') &&
+        timeBoth.includes('4:00 PM') &&
         scheduleAfterBoth?.morningEnd === '13:00' &&
         scheduleAfterBoth?.afternoonStart === '14:00' &&
         scheduleAfterBoth?.afternoonEnd === '16:00',
-      `${scheduleAfterBoth?.morningStart}-${scheduleAfterBoth?.morningEnd} / ${scheduleAfterBoth?.afternoonStart}-${scheduleAfterBoth?.afternoonEnd}`
+      timeBoth.slice(0, 160)
     );
 
     await Conversation.deleteMany({ phone: { $in: [waNumber(ADMIN), ADMIN] } });

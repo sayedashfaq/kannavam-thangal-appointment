@@ -211,6 +211,21 @@ const formatMinutesToTime = (totalMinutes) => {
   return `${displayHours}:${String(minutes).padStart(2, '0')} ${period}`;
 };
 
+/** Convert stored `HH:mm` to a 12-hour label such as `10:00 AM`. */
+const formatClock12Hour = (timeStr) => {
+  if (!isValidTimeString(timeStr)) return String(timeStr || '');
+  return formatMinutesToTime(parseTimeToMinutes(timeStr));
+};
+
+/** False when afternoon was cleared (start == end) for a morning-only day. */
+const hasAfternoonSession = (schedule) => {
+  if (!schedule?.afternoonStart || !schedule?.afternoonEnd) return false;
+  return (
+    parseTimeToMinutes(schedule.afternoonEnd) >
+    parseTimeToMinutes(schedule.afternoonStart)
+  );
+};
+
 const calculateReportingTime = (schedule, tokenIndex) => {
   // Fixed 10-minute slots so each token has a clear reporting time.
   const SLOT_MINUTES = 10;
@@ -224,6 +239,13 @@ const calculateReportingTime = (schedule, tokenIndex) => {
 
   if (tokenOffset < morningDuration) {
     return formatMinutesToTime(morningStart + tokenOffset);
+  }
+
+  // Morning-only days (no afternoon session) keep every overflow token
+  // at the last morning reporting slot.
+  if (!hasAfternoonSession(schedule)) {
+    const lastMorning = Math.max(morningStart, morningEnd - SLOT_MINUTES);
+    return formatMinutesToTime(lastMorning);
   }
 
   const afternoonOffset = tokenOffset - morningDuration;
@@ -248,5 +270,7 @@ module.exports = {
   parseFlexibleTime,
   parseTimeRanges,
   formatMinutesToTime,
+  formatClock12Hour,
+  hasAfternoonSession,
   calculateReportingTime,
 };

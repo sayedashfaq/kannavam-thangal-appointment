@@ -7,6 +7,8 @@ const {
   parseTimeToMinutes,
   formatDisplayDate,
   parseTimeRanges,
+  formatClock12Hour,
+  hasAfternoonSession,
 } = require('../helpers/timeHelper');
 const { isValidTokenFormat, normalizeToken } = require('../helpers/tokenHelper');
 const settingsService = require('./settingsService');
@@ -271,10 +273,13 @@ const formatSchedules = async () => {
 
   if (schedules.length === 0) return 'No schedules configured.';
 
-  const lines = schedules.map(
-    (schedule) =>
-      `*${schedule.day}* — ${schedule.location}\n${schedule.morningStart}–${schedule.morningEnd} · ${schedule.afternoonStart}–${schedule.afternoonEnd} · limit ${schedule.tokenLimit}${schedule.bookingOpen ? '' : ' · closed'}`
-  );
+  const lines = schedules.map((schedule) => {
+    const morning = `${formatClock12Hour(schedule.morningStart)}–${formatClock12Hour(schedule.morningEnd)}`;
+    const afternoon = hasAfternoonSession(schedule)
+      ? ` · ${formatClock12Hour(schedule.afternoonStart)}–${formatClock12Hour(schedule.afternoonEnd)}`
+      : ' · morning only';
+    return `*${schedule.day}* — ${schedule.location}\n${morning}${afternoon} · limit ${schedule.tokenLimit}${schedule.bookingOpen ? '' : ' · closed'}`;
+  });
 
   return `*Consultation Days*\n\n${lines.join('\n\n')}\n\nSend \`upcoming\` for exact dates this week.`;
 };
@@ -430,9 +435,9 @@ const changeLocationReply = async (argument) => {
  *   change time wednesday 10 am to 12pm 1pm to 4pm
  *   change time 10am to 1pm 2pm to 4pm
  *
- * One range updates morning only (afternoon kept).
- * Two ranges update morning + afternoon.
- * Default consultation hours are 10:00–13:00 and 14:00–16:00.
+ * One range = morning only (afternoon consultation cleared).
+ * Two ranges = morning + afternoon.
+ * Default consultation hours are 10:00 AM–1:00 PM and 2:00 PM–4:00 PM.
  */
 const changeTimeReply = async (argument) => {
   const text = String(argument || '').trim();
@@ -475,13 +480,14 @@ const changeTimeReply = async (argument) => {
   if (ranges[1]) {
     updates.afternoonStart = ranges[1].start;
     updates.afternoonEnd = ranges[1].end;
-  }
 
-  if (
-    parseTimeToMinutes(updates.morningEnd) >
-    parseTimeToMinutes(updates.afternoonStart || existing.afternoonStart)
-  ) {
-    return messages.INVALID_TIME;
+    if (parseTimeToMinutes(updates.morningEnd) > parseTimeToMinutes(updates.afternoonStart)) {
+      return messages.INVALID_TIME;
+    }
+  } else {
+    // One range only → morning consultation only; clear afternoon session.
+    updates.afternoonStart = ranges[0].end;
+    updates.afternoonEnd = ranges[0].end;
   }
 
   const schedule = await scheduleService.updateSchedule(dayName, updates);
